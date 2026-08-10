@@ -1,0 +1,15 @@
+services:
+  postgres:
+    image: postgres:18
+    container_name: handout_manager_db
+    environment:
+      POSTGRES_DB: handout_manager
+      POSTGRES_USER: handout_manager
+      POSTGRES_PASSWORD: secret
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql
+
+volumes:
+  postgres_data:
