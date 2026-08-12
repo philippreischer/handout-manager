@@ -1,11 +1,7 @@
 package at.handoutmanager.backend.user;
 
+import at.handoutmanager.backend.common.Auditable;
 import jakarta.persistence.*;
-import org.springframework.data.annotation.CreatedDate;
-import org.springframework.data.annotation.LastModifiedDate;
-import org.springframework.data.jpa.domain.support.AuditingEntityListener;
-
-import java.time.Instant;
 
 @Entity
 @Table(
@@ -15,7 +11,7 @@ import java.time.Instant;
         }
 )
 
-public class User {
+public class User extends Auditable{
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -30,13 +26,6 @@ public class User {
     @Column(name = "user_name", nullable = false, length = 255)
     private String userName;
 
-    @CreatedDate
-    @Column(name = "created_at", nullable = false, updatable = false)
-    private Instant createdAt;
-
-    @LastModifiedDate
-    @Column(name = "updated_at", nullable = false)
-    private Instant updatedAt;
 
     protected User(){}
 
@@ -73,13 +62,4 @@ public class User {
     public void setUserName(String userName) {
         this.userName = userName;
     }
-
-    public Instant getCreatedAt() {
-        return createdAt;
-    }
-
-    public Instant getUpdatedAt() {
-        return updatedAt;
-    }
-
 }
