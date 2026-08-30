@@ -11,7 +11,7 @@ import java.time.Instant;
 
 @MappedSuperclass
 @EntityListeners(AuditingEntityListener.class)
-public class Auditable {
+public abstract class Auditable {
 
     @CreatedDate
     @Column(name = "created_at", nullable = false, updatable = false)
