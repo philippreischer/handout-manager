@@ -1,0 +1,28 @@
+### Secrets ###
+# Read automatically by docker-compose - must never be committed.
+.env
+.env.local
+# Documented template without values stays under version control.
+!.env.example
+ 
+### IntelliJ IDEA ###
+.idea
+*.iws
+*.iml
+*.ipr
+ 
+### VS Code ###
+.vscode/
+ 
+### STS / Eclipse ###
+.apt_generated
+.classpath
+.factorypath
+.project
+.settings
+.springBeans
+.sts4-cache
+ 
+### OS ###
+Thumbs.db
+desktop.ini
