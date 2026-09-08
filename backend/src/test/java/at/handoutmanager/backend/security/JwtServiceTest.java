@@ -25,7 +25,7 @@ class JwtServiceTest {
     }
 
     @Test
-    void generatedTokenContainsUserId() {
+    void shouldReturnUserId_whenTokenIsValid() {
         Long userId = 42L;
         String token = sut.generateAccessToken(userId);
 
@@ -33,7 +33,7 @@ class JwtServiceTest {
     }
 
     @Test
-    void tokenSignedWithDifferentSecretIsRejected() {
+    void shouldThrowSignatureException_whenTokenSignedWithDifferentSecret() {
         JwtProperties otherProperties = new JwtProperties(
                 OTHER_SECRET,
                 Duration.ofMinutes(15),
@@ -46,7 +46,7 @@ class JwtServiceTest {
     }
 
     @Test
-    void tamperedTokenIsRejected() {
+    void shouldThrowSignatureException_whenTokenIsTampered() {
         Long userId = 42L;
         String token = sut.generateAccessToken(userId);
 
@@ -58,7 +58,7 @@ class JwtServiceTest {
     }
 
     @Test
-    void expiredTokenIsRejected() {
+    void shouldThrowExpiredJwtException_whenTokenIsExpired() {
         JwtProperties expiredProperties = new JwtProperties(
                 TEST_SECRET,
                 Duration.ofMinutes(-1),
