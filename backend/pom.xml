@@ -81,9 +81,9 @@
 			<optional>true</optional>
 		</dependency>
 
-		<!-- ===== Test =====
-             Each technology starter has a paired test starter in Spring Boot 4.
-             They bring spring-boot-starter-test transitively, so it is not declared here. -->
+            <!-- ===== Test =====
+                 Each technology starter has a paired test starter in Spring Boot 4.
+                 They bring spring-boot-starter-test transitively, so it is not declared here. -->
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
 			<artifactId>spring-boot-starter-webmvc-test</artifactId>
