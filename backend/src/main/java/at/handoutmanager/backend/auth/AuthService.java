@@ -1,28 +1,50 @@
 package at.handoutmanager.backend.auth;
 
 import at.handoutmanager.backend.security.JwtService;
-import at.handoutmanager.backend.security.RefreshTokenRepository;
+import at.handoutmanager.backend.security.RefreshTokenService;
+import at.handoutmanager.backend.user.User;
 import at.handoutmanager.backend.user.UserService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
 @Service
 public class AuthService {
 
+    private static final Logger log = LoggerFactory.getLogger(AuthService.class);
+
     private final UserService userService;
     private final JwtService jwtService;
-    private final RefreshTokenRepository refreshTokenRepository;
+    private final RefreshTokenService refreshTokenService;
     private final PasswordEncoder passwordEncoder;
 
     public AuthService(UserService userService,
                        JwtService jwtService,
-                       RefreshTokenRepository refreshTokenRepository,
+                       RefreshTokenService refreshTokenService,
                        PasswordEncoder passwordEncoder) {
         this.userService = userService;
         this.jwtService = jwtService;
-        this.refreshTokenRepository = refreshTokenRepository;
+        this.refreshTokenService = refreshTokenService;
         this.passwordEncoder = passwordEncoder;
     }
 
+    public AuthTokens login(String email, String rawPassword){
+        User user = userService.findByEmail(email)
+                .orElseThrow(() -> {
+                    log.warn("Login failed: no account for email {}", email);
+                    return new InvalidCredentialsException("Login failed");
+                });
 
+        if(!passwordEncoder.matches(rawPassword, user.getPasswordHash())) {
+            log.warn("Login failed: wrong password for user {}", user.getId());
+            throw new InvalidCredentialsException("Login failed");
+        }
+
+        String accessToken = jwtService.generateAccessToken(user.getId());
+        String refreshToken = refreshTokenService.issueToken(user.getId());
+
+        log.info("Login successful for user {}", user.getId());
+        return new AuthTokens(accessToken, refreshToken);
+    }
 }
