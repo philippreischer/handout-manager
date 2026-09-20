@@ -1,8 +1,10 @@
-package at.handoutmanager.backend.user;
+package at.handoutmanager.backend.auth;
 
-import at.handoutmanager.backend.auth.AuthController;
 import at.handoutmanager.backend.common.GlobalExceptionHandler;
+import at.handoutmanager.backend.security.JwtProperties;
 import at.handoutmanager.backend.security.SecurityConfig;
+import at.handoutmanager.backend.user.EmailAlreadyExistsException;
+import at.handoutmanager.backend.user.UserService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
@@ -10,18 +12,21 @@ import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
+import java.time.Duration;
 
 import static org.hamcrest.Matchers.not;
 import static org.hamcrest.Matchers.containsString;
 import static org.mockito.Mockito.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 
 @WebMvcTest(AuthController.class)
 @Import({GlobalExceptionHandler.class, SecurityConfig.class})
 class AuthControllerTest {
+
+    private static final String ACCESS_TOKEN = "test-access-token";
+    private static final String REFRESH_TOKEN = "refresh-token-must-not-leak";
 
     @Autowired
     private MockMvc mockMvc;
@@ -29,6 +34,13 @@ class AuthControllerTest {
     @MockitoBean
     private UserService userService;
 
+    @MockitoBean
+    private AuthService authService;
+
+    @MockitoBean
+    private JwtProperties jwtProperties;
+
+    //Registration Tests
     @Test
     void shouldReturn201_whenRegistrationSucceeds() throws Exception {
         mockMvc.perform(post("/api/auth/register")
@@ -80,4 +92,64 @@ class AuthControllerTest {
 
         verify(userService, never()).register(any(), any(), any());
     }
+
+    //Login Tests
+    @Test
+    void shouldReturnAccessTokenAndCookie_whenLoginSucceeds() throws Exception {
+        when(authService.login("max@mustermann.com", "pass1234"))
+                .thenReturn(new AuthTokens(ACCESS_TOKEN, REFRESH_TOKEN));
+        when(jwtProperties.getRefreshTokenTtl())
+                .thenReturn(Duration.ofDays(14));
+
+        mockMvc.perform(post("/api/auth/login")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                            {
+                              "email": "max@mustermann.com",
+                              "password": "pass1234"
+                            }
+                            """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.accessToken").value(ACCESS_TOKEN))
+                .andExpect(cookie().exists("refresh_token"))
+                .andExpect(cookie().httpOnly("refresh_token", true));
+
+    }
+
+    @Test
+    void shouldNotExposeRefreshTokenInBody_whenLoginSucceeds() throws Exception {
+        when(authService.login("max@mustermann.com", "pass1234"))
+                .thenReturn(new AuthTokens(ACCESS_TOKEN, REFRESH_TOKEN));
+        when(jwtProperties.getRefreshTokenTtl())
+                .thenReturn(Duration.ofDays(14));
+
+        mockMvc.perform(post("/api/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                            {
+                              "email": "max@mustermann.com",
+                              "password": "pass1234"
+                            }
+                            """))
+                .andExpect(content().string(not(containsString(REFRESH_TOKEN))));
+
+    }
+
+    @Test
+    void shouldReturn401_whenCredentialsAreInvalid() throws Exception {
+        when(authService.login("max@mustermann.com", "pass1234"))
+                .thenThrow(new InvalidCredentialsException("Login failed"));
+
+        mockMvc.perform(post("/api/auth/login")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                            {
+                              "email": "max@mustermann.com",
+                              "password": "pass1234"
+                            }
+                            """))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.status").value(401));
+    }
+
 }
