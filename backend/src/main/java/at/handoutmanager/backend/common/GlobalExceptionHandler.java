@@ -1,5 +1,6 @@
 package at.handoutmanager.backend.common;
 
+import at.handoutmanager.backend.auth.InvalidCredentialsException;
 import at.handoutmanager.backend.user.EmailAlreadyExistsException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -41,6 +42,16 @@ public class GlobalExceptionHandler {
                 "Request validation failed.");
         problem.setTitle("Validation failed");
         problem.setProperty("errors", errors);
+        return problem;
+    }
+
+    @ExceptionHandler(InvalidCredentialsException.class)
+    public ProblemDetail handleInvalidCredentials(InvalidCredentialsException ex) {
+
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(
+                HttpStatus.UNAUTHORIZED,
+                "Login failed.");
+        problem.setTitle("Login failed");
         return problem;
     }
 }
