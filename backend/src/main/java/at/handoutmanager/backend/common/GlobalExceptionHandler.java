@@ -1,12 +1,14 @@
 package at.handoutmanager.backend.common;
 
 import at.handoutmanager.backend.auth.InvalidCredentialsException;
+import at.handoutmanager.backend.security.InvalidRefreshTokenException;
 import at.handoutmanager.backend.user.EmailAlreadyExistsException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
 import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.bind.MissingRequestCookieException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
@@ -52,6 +54,28 @@ public class GlobalExceptionHandler {
                 HttpStatus.UNAUTHORIZED,
                 "Login failed.");
         problem.setTitle("Login failed");
+        return problem;
+    }
+
+    @ExceptionHandler(InvalidRefreshTokenException.class)
+    public ProblemDetail handleInvalidRefreshToken(InvalidRefreshTokenException ex) {
+        log.warn("Refresh failed: {}", ex.getMessage());
+
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(
+                HttpStatus.UNAUTHORIZED,
+                "Refresh failed.");
+        problem.setTitle("Refresh failed");
+        return problem;
+    }
+
+    @ExceptionHandler(MissingRequestCookieException.class)
+    public ProblemDetail handleMissingRequestCookie(MissingRequestCookieException ex) {
+        log.warn("Refresh failed: {}", ex.getMessage());
+
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(
+                HttpStatus.UNAUTHORIZED,
+                "Refresh failed.");
+        problem.setTitle("Refresh failed");
         return problem;
     }
 }

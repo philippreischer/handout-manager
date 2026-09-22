@@ -1,6 +1,7 @@
 package at.handoutmanager.backend.auth;
 
 import at.handoutmanager.backend.security.JwtService;
+import at.handoutmanager.backend.security.RefreshToken;
 import at.handoutmanager.backend.security.RefreshTokenService;
 import at.handoutmanager.backend.user.User;
 import at.handoutmanager.backend.user.UserService;
@@ -8,6 +9,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class AuthService {
@@ -46,5 +48,18 @@ public class AuthService {
 
         log.info("Login successful for user {}", user.getId());
         return new AuthTokens(accessToken, refreshToken);
+    }
+
+    @Transactional
+    public AuthTokens refreshTokens(String rawRefreshToken){
+
+        RefreshToken refreshToken = refreshTokenService.validateToken(rawRefreshToken);
+        refreshTokenService.revokeToken(refreshToken);
+        Long userId = refreshToken.getUserId();
+
+        String accessToken = jwtService.generateAccessToken(userId);
+        String newRefreshToken = refreshTokenService.issueToken(userId);
+
+        return new AuthTokens(accessToken, newRefreshToken);
     }
 }

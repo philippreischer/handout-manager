@@ -7,10 +7,7 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseCookie;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 
 @RestController
 @RequestMapping("/api/auth")
@@ -38,7 +35,28 @@ public class AuthController {
     public ResponseEntity<TokenResponseDTO> login(@Valid @RequestBody LoginRequestDTO request){
         AuthTokens tokens = authService.login(request.email(), request.password());
 
-        ResponseCookie cookie = ResponseCookie.from("refresh_token", tokens.refreshToken())
+        ResponseCookie cookie = buildRefreshCookie(tokens.refreshToken());
+
+        return ResponseEntity.ok()
+                .header(HttpHeaders.SET_COOKIE, cookie.toString())
+                .body(new TokenResponseDTO(tokens.accessToken()));
+
+    }
+
+    @PostMapping("/refresh")
+    public ResponseEntity<TokenResponseDTO> refresh(
+            @CookieValue("refresh_token") String rawRefreshToken) {
+        AuthTokens tokens = authService.refreshTokens(rawRefreshToken);
+
+        ResponseCookie cookie = buildRefreshCookie(tokens.refreshToken());
+
+        return ResponseEntity.ok()
+                .header(HttpHeaders.SET_COOKIE, cookie.toString())
+                .body(new TokenResponseDTO(tokens.accessToken()));
+    }
+
+    private ResponseCookie buildRefreshCookie(String refreshToken) {
+        return ResponseCookie.from("refresh_token", refreshToken)
                 .httpOnly(true)
                 // TODO: must be true in production. Profile-dependent - a Secure cookie
                 // is rejected by browsers over plain HTTP during local development.
@@ -48,9 +66,6 @@ public class AuthController {
                 .maxAge(jwtProperties.getRefreshTokenTtl())
                 .build();
 
-        return ResponseEntity.ok()
-                .header(HttpHeaders.SET_COOKIE, cookie.toString())
-                .body(new TokenResponseDTO(tokens.accessToken()));
-
     }
+
 }
