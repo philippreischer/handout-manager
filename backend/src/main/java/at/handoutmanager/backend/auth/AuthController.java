@@ -7,11 +7,17 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseCookie;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.CookieValue;
 
 @RestController
 @RequestMapping("/api/auth")
 public class AuthController {
+
+    private static final String REFRESH_TOKEN_COOKIE = "refresh_token";
 
     private final UserService userService;
     private final AuthService authService;
@@ -45,7 +51,7 @@ public class AuthController {
 
     @PostMapping("/refresh")
     public ResponseEntity<TokenResponseDTO> refresh(
-            @CookieValue("refresh_token") String rawRefreshToken) {
+            @CookieValue(REFRESH_TOKEN_COOKIE) String rawRefreshToken) {
         AuthTokens tokens = authService.refreshTokens(rawRefreshToken);
 
         ResponseCookie cookie = buildRefreshCookie(tokens.refreshToken());
@@ -56,7 +62,7 @@ public class AuthController {
     }
 
     private ResponseCookie buildRefreshCookie(String refreshToken) {
-        return ResponseCookie.from("refresh_token", refreshToken)
+        return ResponseCookie.from(REFRESH_TOKEN_COOKIE, refreshToken)
                 .httpOnly(true)
                 // TODO: must be true in production. Profile-dependent - a Secure cookie
                 // is rejected by browsers over plain HTTP during local development.
