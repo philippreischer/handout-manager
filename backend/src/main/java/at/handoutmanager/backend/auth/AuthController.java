@@ -61,6 +61,30 @@ public class AuthController {
                 .body(new TokenResponseDTO(tokens.accessToken()));
     }
 
+    @PostMapping("/logout")
+    public ResponseEntity<Void> logout(
+            @CookieValue(value = REFRESH_TOKEN_COOKIE, required = false) String rawRefreshToken) {
+
+        if (rawRefreshToken != null) {
+            authService.logout(rawRefreshToken);
+        }
+
+        ResponseCookie cookie = ResponseCookie.from(REFRESH_TOKEN_COOKIE, "")
+                .httpOnly(true)
+                // TODO: must be true in production. Profile-dependent - a Secure cookie
+                // is rejected by browsers over plain HTTP during local development.
+                .secure(false)
+                .sameSite("Strict")
+                .path("/api/auth")
+                .maxAge(0)
+                .build();
+
+        return ResponseEntity.noContent()
+                .header(HttpHeaders.SET_COOKIE, cookie.toString())
+                .build();
+
+    }
+
     private ResponseCookie buildRefreshCookie(String refreshToken) {
         return ResponseCookie.from(REFRESH_TOKEN_COOKIE, refreshToken)
                 .httpOnly(true)

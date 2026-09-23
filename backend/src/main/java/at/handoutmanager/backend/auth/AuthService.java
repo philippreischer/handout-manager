@@ -1,5 +1,6 @@
 package at.handoutmanager.backend.auth;
 
+import at.handoutmanager.backend.security.InvalidRefreshTokenException;
 import at.handoutmanager.backend.security.JwtService;
 import at.handoutmanager.backend.security.RefreshToken;
 import at.handoutmanager.backend.security.RefreshTokenService;
@@ -61,5 +62,15 @@ public class AuthService {
         String newRefreshToken = refreshTokenService.issueToken(userId);
 
         return new AuthTokens(accessToken, newRefreshToken);
+    }
+
+    @Transactional
+    public void logout(String rawRefreshToken){
+        try {
+            RefreshToken refreshToken = refreshTokenService.validateToken(rawRefreshToken);
+            refreshTokenService.revokeToken(refreshToken);
+        } catch (InvalidRefreshTokenException e) {
+            log.debug("Logout with invalid or already revoked token - treated as success");
+        }
     }
 }
