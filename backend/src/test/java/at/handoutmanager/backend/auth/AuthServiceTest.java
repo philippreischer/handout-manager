@@ -1,6 +1,8 @@
 package at.handoutmanager.backend.auth;
 
+import at.handoutmanager.backend.security.InvalidRefreshTokenException;
 import at.handoutmanager.backend.security.JwtService;
+import at.handoutmanager.backend.security.RefreshToken;
 import at.handoutmanager.backend.security.RefreshTokenService;
 import at.handoutmanager.backend.user.User;
 import at.handoutmanager.backend.user.UserService;
@@ -12,10 +14,11 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.util.ReflectionTestUtils;
 
+import java.time.Duration;
+import java.time.Instant;
 import java.util.Optional;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
@@ -28,6 +31,8 @@ class AuthServiceTest {
     private static final String PASSWORD_HASH = "hashed-pass";
     private static final String ACCESS_TOKEN = "test-access-token";
     private static final String REFRESH_TOKEN = "refresh-token-must-not-leak";
+    private static final String OLD_REFRESH_TOKEN = "old-refresh-token-must-not-leak";
+    private static final String NEW_REFRESH_TOKEN = "new-refresh-token-must-not-leak";
 
     @Mock
     private UserService userService;
@@ -44,7 +49,7 @@ class AuthServiceTest {
     @InjectMocks
     private AuthService sut;
 
-
+    //Login
     @Test
     void shouldReturnTokens_whenCredentialsAreValid(){
         when(userService.findByEmail(EMAIL))
@@ -97,10 +102,73 @@ class AuthServiceTest {
         verify(refreshTokenService, never()).issueToken(any());
     }
 
+    //RefreshTokens
+    @Test
+    void shouldReturnNewTokens_whenRefreshTokenIsValid(){
+        when(refreshTokenService.validateToken(OLD_REFRESH_TOKEN)).thenReturn(oldToken());
+        when(jwtService.generateAccessToken(1L)).thenReturn(ACCESS_TOKEN);
+        when(refreshTokenService.issueToken(1L)).thenReturn(NEW_REFRESH_TOKEN);
+
+        AuthTokens result = sut.refreshTokens(OLD_REFRESH_TOKEN);
+
+        assertThat(result.accessToken()).isEqualTo(ACCESS_TOKEN);
+        assertThat(result.refreshToken()).isEqualTo(NEW_REFRESH_TOKEN);
+    }
+
+    @Test
+    void shouldRevokeOldToken_whenRefreshing(){
+        RefreshToken oldToken = oldToken();
+        when(refreshTokenService.validateToken(OLD_REFRESH_TOKEN)).thenReturn(oldToken);
+        when(jwtService.generateAccessToken(1L)).thenReturn(ACCESS_TOKEN);
+        when(refreshTokenService.issueToken(1L)).thenReturn(NEW_REFRESH_TOKEN);
+
+        sut.refreshTokens(OLD_REFRESH_TOKEN);
+
+        verify(refreshTokenService).revokeToken(oldToken);
+    }
+
+    @Test
+    void shouldPropagateException_whenRefreshTokenIsInvalid(){
+        when(refreshTokenService.validateToken(OLD_REFRESH_TOKEN))
+                .thenThrow(new InvalidRefreshTokenException("Refresh token not found"));
+
+        assertThatThrownBy(() -> sut.refreshTokens(OLD_REFRESH_TOKEN))
+                .isInstanceOf(InvalidRefreshTokenException.class);
+
+        verify(refreshTokenService, never()).issueToken(any());
+    }
+
+    //Logout
+    @Test
+    void shouldRevokeToken_whenLoggingOut(){
+        RefreshToken oldToken = oldToken();
+        when(refreshTokenService.validateToken(OLD_REFRESH_TOKEN)).thenReturn(oldToken);
+
+        sut.logout(OLD_REFRESH_TOKEN);
+
+        verify(refreshTokenService).revokeToken(oldToken);
+    }
+
+    @Test
+    void shouldNotThrow_whenLogoutTokenIsInvalid(){
+        when(refreshTokenService.validateToken(OLD_REFRESH_TOKEN))
+                .thenThrow(new InvalidRefreshTokenException("Refresh token not found"));
+
+        assertThatCode(() -> sut.logout(OLD_REFRESH_TOKEN))
+                .doesNotThrowAnyException();
+    }
+
+    //Helper
     private User userWithId(Long id) {
         User user = new User(EMAIL, PASSWORD_HASH, "Max");
         ReflectionTestUtils.setField(user, "id", id);
         return user;
+    }
+
+    private RefreshToken oldToken() {
+        return new RefreshToken(
+                1L, "old-hash", Instant.now().plus(Duration.ofDays(14))
+        );
     }
 
 }
