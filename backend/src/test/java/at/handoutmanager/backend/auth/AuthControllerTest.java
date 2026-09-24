@@ -1,7 +1,9 @@
 package at.handoutmanager.backend.auth;
 
 import at.handoutmanager.backend.common.GlobalExceptionHandler;
+import at.handoutmanager.backend.security.JwtAuthenticationFilter;
 import at.handoutmanager.backend.security.JwtProperties;
+import at.handoutmanager.backend.security.JwtService;
 import at.handoutmanager.backend.security.SecurityConfig;
 import at.handoutmanager.backend.user.EmailAlreadyExistsException;
 import at.handoutmanager.backend.user.UserService;
@@ -22,7 +24,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 
 @WebMvcTest(AuthController.class)
-@Import({GlobalExceptionHandler.class, SecurityConfig.class})
+@Import({GlobalExceptionHandler.class, SecurityConfig.class, JwtAuthenticationFilter.class})
 class AuthControllerTest {
 
     private static final String ACCESS_TOKEN = "test-access-token";
@@ -39,6 +41,10 @@ class AuthControllerTest {
 
     @MockitoBean
     private JwtProperties jwtProperties;
+
+    @MockitoBean
+    private JwtService jwtService;
+
 
     //Registration Tests
     @Test
