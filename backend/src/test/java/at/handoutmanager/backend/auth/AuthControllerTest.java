@@ -1,10 +1,7 @@
 package at.handoutmanager.backend.auth;
 
 import at.handoutmanager.backend.common.GlobalExceptionHandler;
-import at.handoutmanager.backend.security.JwtAuthenticationFilter;
-import at.handoutmanager.backend.security.JwtProperties;
-import at.handoutmanager.backend.security.JwtService;
-import at.handoutmanager.backend.security.SecurityConfig;
+import at.handoutmanager.backend.security.*;
 import at.handoutmanager.backend.user.EmailAlreadyExistsException;
 import at.handoutmanager.backend.user.UserService;
 import org.junit.jupiter.api.Test;
@@ -15,6 +12,7 @@ import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import java.time.Duration;
+import jakarta.servlet.http.Cookie;
 
 import static org.hamcrest.Matchers.not;
 import static org.hamcrest.Matchers.containsString;
@@ -29,6 +27,7 @@ class AuthControllerTest {
 
     private static final String ACCESS_TOKEN = "test-access-token";
     private static final String REFRESH_TOKEN = "refresh-token-must-not-leak";
+    private static final String OLD_REFRESH_TOKEN = "old-refresh-token";
 
     @Autowired
     private MockMvc mockMvc;
@@ -156,6 +155,54 @@ class AuthControllerTest {
                             """))
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.status").value(401));
+    }
+
+    //Refresh Tests
+    @Test
+    void shouldReturnNewAccessTokenAndCookie_whenRefreshSucceeds() throws Exception {
+        when(authService.refreshTokens(OLD_REFRESH_TOKEN))
+                .thenReturn(new AuthTokens(ACCESS_TOKEN, REFRESH_TOKEN));
+        when(jwtProperties.getRefreshTokenTtl())
+                .thenReturn(Duration.ofDays(14));
+
+        mockMvc.perform(post("/api/auth/refresh")
+                        .cookie(new Cookie("refresh_token", OLD_REFRESH_TOKEN)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.accessToken").value(ACCESS_TOKEN))
+                .andExpect(cookie().exists("refresh_token"))
+                .andExpect(cookie().httpOnly("refresh_token", true))
+                .andExpect(content().string(not(containsString(REFRESH_TOKEN))));
+    }
+
+    @Test
+    void shouldReturn401_whenRefreshTokenIsInvalid() throws Exception {
+        when(authService.refreshTokens(OLD_REFRESH_TOKEN))
+                .thenThrow(new InvalidRefreshTokenException("Refresh token not found"));
+
+        mockMvc.perform(post("/api/auth/refresh")
+                        .cookie(new Cookie("refresh_token", OLD_REFRESH_TOKEN)))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.status").value(401));
+    }
+
+    //Logout Tests
+    @Test
+    void shouldReturn204AndClearCookie_whenLoggingOut() throws Exception {
+        mockMvc.perform(post("/api/auth/logout")
+                        .cookie(new Cookie("refresh_token", OLD_REFRESH_TOKEN)))
+                .andExpect(status().isNoContent())
+                .andExpect(cookie().maxAge("refresh_token", 0));
+
+        verify(authService).logout(OLD_REFRESH_TOKEN);
+    }
+
+    @Test
+    void shouldReturn204_whenLogoutWithoutCookie() throws Exception {
+        mockMvc.perform(post("/api/auth/logout"))
+                .andExpect(status().isNoContent())
+                .andExpect(cookie().maxAge("refresh_token", 0));
+
+        verify(authService, never()).logout(any());
     }
 
 }
