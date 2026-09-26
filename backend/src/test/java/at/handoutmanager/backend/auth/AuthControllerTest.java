@@ -1,11 +1,7 @@
 package at.handoutmanager.backend.auth;
 
 import at.handoutmanager.backend.common.GlobalExceptionHandler;
-import at.handoutmanager.backend.security.InvalidRefreshTokenException;
-import at.handoutmanager.backend.security.JwtAuthenticationFilter;
-import at.handoutmanager.backend.security.JwtProperties;
-import at.handoutmanager.backend.security.JwtService;
-import at.handoutmanager.backend.security.SecurityConfig;
+import at.handoutmanager.backend.security.*;
 import at.handoutmanager.backend.user.EmailAlreadyExistsException;
 import at.handoutmanager.backend.user.UserService;
 import jakarta.servlet.http.Cookie;
@@ -52,6 +48,9 @@ class AuthControllerTest {
 
     @MockitoBean
     private CookieProperties cookieProperties;
+
+    @MockitoBean
+    private CorsProperties corsProperties;
 
     @BeforeEach
     void setUp() {
