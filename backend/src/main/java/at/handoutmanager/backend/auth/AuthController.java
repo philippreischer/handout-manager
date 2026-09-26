@@ -13,6 +13,8 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.CookieValue;
 
+import java.time.Duration;
+
 @RestController
 @RequestMapping("/api/auth")
 public class AuthController {
@@ -22,13 +24,16 @@ public class AuthController {
     private final UserService userService;
     private final AuthService authService;
     private final JwtProperties jwtProperties;
+    private final CookieProperties cookieProperties;
 
     public AuthController(UserService userService,
                           AuthService authService,
-                          JwtProperties jwtProperties) {
+                          JwtProperties jwtProperties,
+                          CookieProperties cookieProperties) {
         this.userService = userService;
         this.authService = authService;
         this.jwtProperties = jwtProperties;
+        this.cookieProperties = cookieProperties;
     }
 
     @PostMapping("/register")
@@ -41,7 +46,7 @@ public class AuthController {
     public ResponseEntity<TokenResponseDTO> login(@Valid @RequestBody LoginRequestDTO request){
         AuthTokens tokens = authService.login(request.email(), request.password());
 
-        ResponseCookie cookie = buildRefreshCookie(tokens.refreshToken());
+        ResponseCookie cookie = buildRefreshCookie(tokens.refreshToken(), jwtProperties.getRefreshTokenTtl());
 
         return ResponseEntity.ok()
                 .header(HttpHeaders.SET_COOKIE, cookie.toString())
@@ -54,7 +59,7 @@ public class AuthController {
             @CookieValue(REFRESH_TOKEN_COOKIE) String rawRefreshToken) {
         AuthTokens tokens = authService.refreshTokens(rawRefreshToken);
 
-        ResponseCookie cookie = buildRefreshCookie(tokens.refreshToken());
+        ResponseCookie cookie = buildRefreshCookie(tokens.refreshToken(), jwtProperties.getRefreshTokenTtl());
 
         return ResponseEntity.ok()
                 .header(HttpHeaders.SET_COOKIE, cookie.toString())
@@ -69,15 +74,7 @@ public class AuthController {
             authService.logout(rawRefreshToken);
         }
 
-        ResponseCookie cookie = ResponseCookie.from(REFRESH_TOKEN_COOKIE, "")
-                .httpOnly(true)
-                // TODO: must be true in production. Profile-dependent - a Secure cookie
-                // is rejected by browsers over plain HTTP during local development.
-                .secure(false)
-                .sameSite("Strict")
-                .path("/api/auth")
-                .maxAge(0)
-                .build();
+        ResponseCookie cookie = buildRefreshCookie("", Duration.ZERO);
 
         return ResponseEntity.noContent()
                 .header(HttpHeaders.SET_COOKIE, cookie.toString())
@@ -85,17 +82,14 @@ public class AuthController {
 
     }
 
-    private ResponseCookie buildRefreshCookie(String refreshToken) {
-        return ResponseCookie.from(REFRESH_TOKEN_COOKIE, refreshToken)
+    private ResponseCookie buildRefreshCookie(String value, Duration maxAge) {
+        return ResponseCookie.from(REFRESH_TOKEN_COOKIE, value)
                 .httpOnly(true)
-                // TODO: must be true in production. Profile-dependent - a Secure cookie
-                // is rejected by browsers over plain HTTP during local development.
-                .secure(false)
-                .sameSite("Strict")
+                .secure(cookieProperties.isSecure())
+                .sameSite(cookieProperties.getSameSite())
                 .path("/api/auth")
-                .maxAge(jwtProperties.getRefreshTokenTtl())
+                .maxAge(maxAge)
                 .build();
-
     }
 
 }

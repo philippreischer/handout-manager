@@ -1,9 +1,15 @@
 package at.handoutmanager.backend.auth;
 
 import at.handoutmanager.backend.common.GlobalExceptionHandler;
-import at.handoutmanager.backend.security.*;
+import at.handoutmanager.backend.security.InvalidRefreshTokenException;
+import at.handoutmanager.backend.security.JwtAuthenticationFilter;
+import at.handoutmanager.backend.security.JwtProperties;
+import at.handoutmanager.backend.security.JwtService;
+import at.handoutmanager.backend.security.SecurityConfig;
 import at.handoutmanager.backend.user.EmailAlreadyExistsException;
 import at.handoutmanager.backend.user.UserService;
+import jakarta.servlet.http.Cookie;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
@@ -11,11 +17,11 @@ import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
-import java.time.Duration;
-import jakarta.servlet.http.Cookie;
 
-import static org.hamcrest.Matchers.not;
+import java.time.Duration;
+
 import static org.hamcrest.Matchers.containsString;
+import static org.hamcrest.Matchers.not;
 import static org.mockito.Mockito.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
@@ -44,6 +50,14 @@ class AuthControllerTest {
     @MockitoBean
     private JwtService jwtService;
 
+    @MockitoBean
+    private CookieProperties cookieProperties;
+
+    @BeforeEach
+    void setUp() {
+        // lenient: only the tests that actually build a cookie read this value.
+        lenient().when(cookieProperties.getSameSite()).thenReturn("Strict");
+    }
 
     //Registration Tests
     @Test
@@ -107,8 +121,8 @@ class AuthControllerTest {
                 .thenReturn(Duration.ofDays(14));
 
         mockMvc.perform(post("/api/auth/login")
-                .contentType(MediaType.APPLICATION_JSON)
-                .content("""
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
                             {
                               "email": "max@mustermann.com",
                               "password": "pass1234"
@@ -118,7 +132,6 @@ class AuthControllerTest {
                 .andExpect(jsonPath("$.accessToken").value(ACCESS_TOKEN))
                 .andExpect(cookie().exists("refresh_token"))
                 .andExpect(cookie().httpOnly("refresh_token", true));
-
     }
 
     @Test
@@ -137,7 +150,6 @@ class AuthControllerTest {
                             }
                             """))
                 .andExpect(content().string(not(containsString(REFRESH_TOKEN))));
-
     }
 
     @Test
@@ -146,8 +158,8 @@ class AuthControllerTest {
                 .thenThrow(new InvalidCredentialsException("Login failed"));
 
         mockMvc.perform(post("/api/auth/login")
-                .contentType(MediaType.APPLICATION_JSON)
-                .content("""
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
                             {
                               "email": "max@mustermann.com",
                               "password": "pass1234"
