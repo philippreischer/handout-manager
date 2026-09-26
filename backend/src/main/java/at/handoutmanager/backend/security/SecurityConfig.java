@@ -35,6 +35,15 @@ public class SecurityConfig {
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
                 .cors(Customizer.withDefaults())
+                /* CSRF protection is disabled on purpose, not by oversight:
+                   - The access token travels in the Authorization header, which a foreign
+                     site cannot set. Header-based auth is immune to CSRF.
+                   - The refresh cookie is the only credential sent automatically, and it is
+                     protected by SameSite=Strict: a cross-site request never carries it.
+                   WARNING: this reasoning holds only while frontend and backend count as the
+                   same site. If the frontend moves to a different domain, SameSite must drop
+                   to "None" - and then CSRF becomes real and needs token-based protection
+                   on /api/auth/refresh. */
                 .csrf(csrf -> csrf.disable())
                 .sessionManagement(session ->
                         session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
