@@ -20,6 +20,12 @@ import static org.mockito.Mockito.*;
 @ExtendWith(MockitoExtension.class)
 class UserServiceTest {
 
+    private static final String EMAIL = "max@mustermann.com";
+    private static final String UNNORMALIZED_EMAIL = " MAX@Mustermann.COM ";
+    private static final String PASSWORD = "pass1234";
+    private static final String PASSWORD_HASH = "hashed-pass";
+    private static final String USER_NAME = "Max";
+
     @Mock
     private UserRepository userRepository;
 
@@ -27,7 +33,7 @@ class UserServiceTest {
     private PasswordEncoder passwordEncoder;
 
     @InjectMocks
-    private UserService userService;
+    private UserService sut;
 
     @Captor
     private ArgumentCaptor<User> userCaptor;
@@ -35,53 +41,54 @@ class UserServiceTest {
 
     @Test
     void shouldReturnCreatedUser_whenEmailIsAvailable() {
-        when(userRepository.existsByEmail("max@mustermann.com")).thenReturn(false);
-        when(passwordEncoder.encode("pass123")).thenReturn("hashed-pass");
+        when(userRepository.existsByEmail(EMAIL)).thenReturn(false);
+        when(passwordEncoder.encode(PASSWORD)).thenReturn(PASSWORD_HASH);
         when(userRepository.save(any(User.class)))
                 .thenAnswer(invocation -> invocation.getArgument(0));
 
-        User result = userService.register("max@mustermann.com", "pass123", "Max");
+        User result = sut.register(EMAIL, PASSWORD, USER_NAME);
 
         verify(userRepository).save(userCaptor.capture());
         User captured = userCaptor.getValue();
 
-        assertThat(captured.getEmail()).isEqualTo("max@mustermann.com");
-        assertThat(captured.getPasswordHash()).isEqualTo("hashed-pass");
-        assertThat(captured.getUserName()).isEqualTo("Max");
+        assertThat(captured.getEmail()).isEqualTo(EMAIL);
+        assertThat(captured.getPasswordHash()).isEqualTo(PASSWORD_HASH);
+        assertThat(captured.getUserName()).isEqualTo(USER_NAME);
         assertThat(result).isSameAs(captured);
     }
-    @Test
-    void shouldThrowEmailAlreadyExists_whenEmailIsTaken(){
-        when(userRepository.existsByEmail("max@mustermann.com")).thenReturn(true);
 
-        assertThatThrownBy(() -> userService.register("max@mustermann.com", "pass123", "Max"))
+    @Test
+    void shouldThrowEmailAlreadyExists_whenEmailIsTaken() {
+        when(userRepository.existsByEmail(EMAIL)).thenReturn(true);
+
+        assertThatThrownBy(() -> sut.register(EMAIL, PASSWORD, USER_NAME))
                 .isInstanceOf(EmailAlreadyExistsException.class);
 
         verify(userRepository, never()).save(any());
     }
 
     @Test
-    void shouldNormalizeEmail_whenRegistering(){
-        when(userRepository.existsByEmail("max@mustermann.com")).thenReturn(false);
-        when(passwordEncoder.encode("pass123")).thenReturn("hashed-pass");
+    void shouldNormalizeEmail_whenRegistering() {
+        when(userRepository.existsByEmail(EMAIL)).thenReturn(false);
+        when(passwordEncoder.encode(PASSWORD)).thenReturn(PASSWORD_HASH);
         when(userRepository.save(any(User.class)))
                 .thenAnswer(invocation -> invocation.getArgument(0));
 
-        userService.register(" MAX@Mustermann.COM ", "pass123", "Max");
+        sut.register(UNNORMALIZED_EMAIL, PASSWORD, USER_NAME);
 
         verify(userRepository).save(userCaptor.capture());
         User captured = userCaptor.getValue();
 
-        assertThat(captured.getEmail()).isEqualTo("max@mustermann.com");
+        assertThat(captured.getEmail()).isEqualTo(EMAIL);
     }
 
     @Test
     void shouldNormalizeEmail_whenLookingUpByEmail() {
-        User existingUser = new User("max@mustermann.com", "hashed-pass", "Max");
-        when(userRepository.findByEmail("max@mustermann.com"))
+        User existingUser = new User(EMAIL, PASSWORD_HASH, USER_NAME);
+        when(userRepository.findByEmail(EMAIL))
                 .thenReturn(Optional.of(existingUser));
 
-        Optional<User> result = userService.findByEmail(" MAX@Mustermann.COM ");
+        Optional<User> result = sut.findByEmail(UNNORMALIZED_EMAIL);
 
         assertThat(result).contains(existingUser);
     }
