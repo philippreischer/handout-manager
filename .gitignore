@@ -1,6 +1,6 @@
 ### Secrets ###
 # Read automatically by docker-compose - must never be committed.
-.env
+/.env
 .env.local
 # Documented template without values stays under version control.
 !.env.example
