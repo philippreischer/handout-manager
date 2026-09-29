@@ -1,7 +1,10 @@
-<script setup lang="ts"></script>
-
+<script setup lang="ts">
+import AppNavbar from '@/components/layout/AppNavbar.vue'
+</script>
+ 
 <template>
-  <h1 class="text-3xl font-bold text-red-500 bg-slate-800 p-4">Tailwind works</h1>
+  <div class="min-h-screen bg-slate-900">
+    <AppNavbar />
+    <RouterView />
+  </div>
 </template>
-
-<style scoped></style>
