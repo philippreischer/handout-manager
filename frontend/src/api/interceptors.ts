@@ -8,6 +8,7 @@ type RetriableConfig = InternalAxiosRequestConfig & { _isRetry?: boolean }
 let refreshPromise: Promise<void> | null = null
 
 function refreshOnce(): Promise<void> {
+  
   if (!refreshPromise) {
     refreshPromise = useAuthStore()
       .restoreSession()
