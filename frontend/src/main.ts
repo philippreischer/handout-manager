@@ -1,14 +1,24 @@
 import { createApp } from 'vue'
 import { createPinia } from 'pinia'
-
+ 
 import './assets/main.css'
-
+ 
 import App from './App.vue'
 import router from './router'
+import { useAuthStore } from '@/stores/useAuthStore'
+ 
+async function bootstrap() {
+    const app = createApp(App)
+ 
+    app.use(createPinia())
+    // Must run before app.use(router): installing the router starts the first
+    // navigation, and its guard would see no token yet.
+    await useAuthStore().restoreSession()
+    
+    app.use(router)
+    await router.isReady()
 
-const app = createApp(App)
-
-app.use(createPinia())
-app.use(router)
-
-app.mount('#app')
+    app.mount('#app')
+}
+ 
+void bootstrap()
