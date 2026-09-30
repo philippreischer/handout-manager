@@ -1,12 +1,16 @@
 # handout-manager — Projektplanung
 
-**Stand: MVP-Schritt 1 (Auth) im Backend abgeschlossen. Lernprojekt (Fullstack).**
+**Stand: MVP-Schritt 1 (Auth) vollständig — Backend und Frontend durchgestochen. Lernprojekt (Fullstack).**
 
 Umgesetzt: Spring-Boot-Projekt, PostgreSQL via docker-compose, Flyway V1–V6, alle Entities und
 Repositories, JPA-Auditing. Auth-Strecke vollständig: Registrierung, Login, Refresh mit
 Rotation, Logout, JWT-Filter, einheitliches Fehlerformat (`ProblemDetail`), profilabhängige
-Cookie- und CORS-Konfiguration. 33 Tests auf Unit- und Web-Ebene.
-Als Nächstes: `feature/auth-frontend`, abzweigend vom gemergten `main`.
+Cookie- und CORS-Konfiguration. 33 Backend-Tests auf Unit- und Web-Ebene.
+Frontend: Vue 3 + TypeScript + Tailwind aufgesetzt, Pinia-Auth-Store, Login- und
+Registrierungsformular, Router mit Guard in beide Richtungen, Request- und Response-Interceptor
+mit Refresh und Wiederholung, 3 Vitest-Tests. Im Browser nachgewiesen: CORS, HttpOnly-Cookie,
+SameSite, Rotation ohne Diebstahlwarnung.
+Als Nächstes: `feature/user-management`.
 
 Diese Datei bündelt den gesamten Planungsstand als Kontext für spätere Arbeitssitzungen. Ergänzend: `naming-conventions.md` (Namenskonventionen) und das ER-Diagramm (`.drawio`).
 
@@ -25,7 +29,7 @@ Ein Hilfstool fürs Pen-&-Paper-Spielen: Ein Spielleiter (Game Master) legt ein 
 
 ## 2. Tech-Stack
 
-- **Frontend:** Vue.js 3, TypeScript, Tailwind
+- **Frontend:** Vue.js 3, TypeScript, Tailwind 4 (via `@tailwindcss/vite`), Pinia, Vue Router, Axios, Vitest
 - **Backend:** Java 25, Spring Boot 4.1, Spring Security, JWT (Bibliothek: **jjwt** 0.13.0 - drei Artefakte: `jjwt-api` compile, `jjwt-impl` und `jjwt-jackson` runtime)
 - **Datenbank:** PostgreSQL
 - **Migrationen:** Flyway
@@ -176,7 +180,7 @@ Regeln, die die DB-Struktur allein nicht erzwingt und die im Service liegen:
 
 Kern-Durchstich: SL legt Projekt an → lädt Spieler ein → erstellt/lädt Resource hoch → gibt pro Spieler frei → Spieler sieht genau das Freigegebene.
 
-1. **Registrierung + Login** (Auth, JWT) — *Backend abgeschlossen*
+1. **Registrierung + Login** (Auth, JWT) — *abgeschlossen, Backend und Frontend*
 2. **Projekt anlegen**
 3. **Spieler einladen / zu Projekt hinzufügen**
 4. **Resource erstellen (Text) und hochladen (Datei)**
@@ -231,18 +235,29 @@ ist und in keinem fachlichen Anwendungsfall auftaucht.
 
 ```
 frontend/src/
-├── assets/
+├── assets/            (main.css mit Tailwind-Import)
+├── api/
+│   ├── httpClient.ts      (Axios-Instanz, baseURL + withCredentials)
+│   ├── interceptors.ts    (setupInterceptors(), aus main.ts aufgerufen)
+│   ├── errorMessage.ts    (ProblemDetail → Anzeigetext)
+│   └── __tests__/
 ├── components/
-├── views/
-├── router/
-├── stores/        (Pinia; Auth-Store zuerst)
-├── api/           (Axios-Instanz + JWT-Interceptor)
+│   ├── auth/          (LoginForm, RegisterForm)
+│   └── layout/        (AppNavbar)
+├── views/             (AuthView als Rahmen, HomeView)
+├── router/            (Routen + Guard, RouteMeta-Augmentation)
+├── stores/            (Pinia; useAuthStore)
 ├── composables/
 ├── types/
-├── themes/        (Fantasy/Horror via CSS-Variablen-Tokens)
-├── App.vue
-└── main.ts
+├── themes/            (Fantasy/Horror via CSS-Variablen-Tokens)
+├── App.vue            (Navbar + RouterView)
+└── main.ts            (bootstrap(): Pinia → Interceptors → restoreSession → Router → mount)
 ```
+
+**View gegen Komponente:** Eine View ist der Rahmen — Layout, Seitenstruktur, verschachtelter
+`RouterView`. Der Inhalt liegt in Komponenten. `AuthView.vue` hält die zentrierte Karte auf
+dunklem Grund, `LoginForm.vue` das Formular darin. Vorteil: Der Rahmen bleibt beim Wechsel
+zwischen Login und Registrierung eingehängt, nur der Inhalt tauscht.
 
 ---
 
@@ -322,6 +337,49 @@ CORS-/Cookie-Konfiguration strukturell aufreißen würde.
   irreführend — 401 heißt „hol dir ein neues Token", 403 heißt „das darfst du nicht". Ein
   eigener Entry Point liefert 401 im `ProblemDetail`-Format.
 
+### Frontend-Auth (MVP-Schritt 1)
+
+- **Access-Token nur im Pinia-Store, nicht im LocalStorage.** Ein Token im LocalStorage ist per
+  JavaScript auslesbar und überlebt den Tab — beides genau das, was das kurzlebige Token
+  vermeiden soll. Preis: Nach jedem Neuladen ist es weg und muss über den Refresh neu geholt
+  werden.
+- **Das Refresh-Token taucht im Frontend nirgends auf.** Es liegt in einem HttpOnly-Cookie und
+  ist für JavaScript *unsichtbar* — der Store hat deshalb kein `refreshToken`-Feld und kann
+  keines haben. Der Browser schickt es bei jedem Aufruf unter `/api/auth` automatisch mit,
+  vorausgesetzt der Axios-Client läuft mit `withCredentials: true`.
+- **`restoreSession()` läuft beim Start, und zwar vor `app.use(router)`.** Vue Router stößt die
+  erste Navigation bereits im `install()` an, nicht erst beim `mount()`. Läuft der Refresh noch,
+  während der Guard entscheidet, sieht dieser kein Token und schickt jeden Seiten-Neuaufbau auf
+  `/login`. `router.isReady()` hilft dagegen nicht — es wartet auf das *Ende* der ersten
+  Navigation, nicht auf ihren Start. *(Praktisch aufgetreten und behoben.)*
+- **Guard wirkt in beide Richtungen:** `meta.requiresAuth` hält Unangemeldete von geschützten
+  Routen weg, `meta.guestOnly` schickt Angemeldete von Login und Registrierung nach `/home`.
+  Ohne den zweiten Fall landet ein angemeldeter Benutzer auf dem Anmeldeformular.
+- **Interceptors in eigener Datei.** Der Auth-Store importiert den Axios-Client; ein Interceptor
+  im Client müsste den Store importieren. `api/interceptors.ts` kennt beide und wird einmal aus
+  `main.ts` aufgerufen — das löst den Zirkelimport auf, statt sich darauf zu verlassen, dass er
+  zur Laufzeit gutgeht.
+- **Refresh bei 401 mit Wiederholung, und eine Sperre gegen Parallelität.** Laufen mehrere
+  Requests gleichzeitig in ein 401, darf nur *einer* den Refresh auslösen: Das Backend rotiert,
+  der zweite Refresh würde ein bereits entwertetes Token vorlegen und den Benutzer aussperren —
+  genau der Pfad, der serverseitig „possible token theft" loggt. Umsetzung: ein gemeinsames
+  Promise auf Modulebene, das alle weiteren Aufrufer abwarten. Das `.finally()`, das es wieder
+  auf `null` setzt, ist Pflicht — sonst funktioniert der Refresh genau einmal pro Seitenaufbau.
+- **`_isRetry` am Request verhindert eine Endlosschleife.** Antwortet auch der wiederholte
+  Request mit 401, wird nicht erneut refresht.
+- **`/api/auth/*` ist vom Refresh ausgenommen**, aus zwei Gründen. Erstens ist ein 401 beim
+  Login eine *legitime* Antwort (falsches Passwort) und kein abgelaufenes Token — ein Refresh
+  würde die Fehlermeldung verschlucken, die das Formular anzeigen soll. Zweitens würde der
+  Refresh-Request selbst bei 401 auf das Promise warten, auf dessen Abschluss er selbst nötig
+  ist: ein Deadlock ohne Fehlermeldung.
+- **Der wiederholte Request läuft erneut durch den Request-Interceptor.** `client(config)` geht
+  durch die komplette Kette, nicht daran vorbei — deshalb wird der `Authorization`-Header dort
+  bedingungslos gesetzt und nicht „nur falls noch keiner da ist". Die zwei Interceptors hängen an
+  dieser Stelle zusammen; ändert man den einen, bricht der andere.
+- **Bekannte Lücke: kein Ladezustand beim Start.** Zwischen Seitenaufruf und `mount()` liegt ein
+  Netzwerk-Request; solange er läuft, ist der Bildschirm leer. Lokal unmerklich, über echtes Netz
+  ein kurzer Weißblitz. Die Lösung wäre ein Ladezustand statt eines blockierenden `await`.
+
 ### Fehlerformat & Konfiguration
 
 - **Einheitliches Fehlerformat `ProblemDetail`** (RFC-Standard, seit Spring 6 mitgeliefert)
@@ -329,6 +387,8 @@ CORS-/Cookie-Konfiguration strukturell aufreißen würde.
   Framework-Fehler (Validierung, 404). Ein Hausformat hätte zwei Formate im System bedeutet.
   Zentral im `GlobalExceptionHandler` (`common`), gültig für alle Controller.
   Validierungsfehler liefern zusätzlich ein `errors`-Objekt mit Feldname → Meldung.
+  Im Frontend liest `api/errorMessage.ts` daraus das `detail`-Feld und unterscheidet zusätzlich
+  den Fall „Server gar nicht erreichbar" (keine `response` am Axios-Fehler).
 - **Validierungsmeldungen explizit auf Englisch** an den Annotationen. Ohne `message` liefert
   Hibernate Validator die Meldung in der Sprache des `Accept-Language`-Headers — eine API, deren
   Fehlertexte vom Aufrufer abhängen, ist für ein Frontend unbrauchbar.
@@ -350,7 +410,9 @@ CORS-/Cookie-Konfiguration strukturell aufreißen würde.
   *produktionstauglichen* Werte (`cookie.secure=true`), das Profil `local` überschreibt sie
   (`false`, weil ein Secure-Cookie über HTTP vom Browser verworfen wird). Vergisst jemand das
   Profil, ist er auf der sicheren Seite. `application-local.properties` wird **eingecheckt** —
-  sie enthält kein Geheimnis, und ohne sie kann niemand das Repo lokal betreiben.
+  sie enthält kein Geheimnis, und ohne sie kann niemand das Repo lokal betreiben. *Folge daraus:*
+  Temporäre Testwerte (etwa eine auf 30 Sekunden verkürzte Token-Laufzeit) müssen vor dem Commit
+  zurückgedreht werden; ein `# TEMPORARY`-Kommentar daneben macht sie im Diff auffällig.
 - **`server.error.include-stacktrace=never`** explizit gesetzt. Lokal überschreibt DevTools das
   mit eigenen Entwicklungs-Defaults; DevTools ist `optional` und nicht Teil des
   Produktions-Jars, dort greift die Einstellung also.
@@ -397,14 +459,16 @@ Aufgeteilt, damit kein Branch zu groß wird. Reihenfolge ergibt sich aus den Abh
 2. **`feature/user`** *(abgeschlossen, gemergt)* — Benutzerverwaltung: `UserService`,
    Passwort-Hashing, E-Mail-Normalisierung und -Eindeutigkeit, `EmailAlreadyExistsException`.
    **Zuerst**, weil Registrierung einen Benutzer schreibt und Login einen liest.
-3. **`feature/auth`** *(abgeschlossen)* — Endpunkte (Registrierung, Login, Refresh, Logout),
-   Refresh-Mechanik mit Rotation, **JWT-Filter**, `GlobalExceptionHandler`, Cookie-/CORS-
-   Konfiguration, `AuthenticationEntryPoint`. Der Filter gehört bewusst hierher und nicht in
+3. **`feature/auth`** *(abgeschlossen, gemergt)* — Endpunkte (Registrierung, Login, Refresh,
+   Logout), Refresh-Mechanik mit Rotation, **JWT-Filter**, `GlobalExceptionHandler`, Cookie-/
+   CORS-Konfiguration, `AuthenticationEntryPoint`. Der Filter gehört bewusst hierher und nicht in
    Branch 1: Er braucht ein echt ausgestelltes Token und einen geschützten Endpunkt, um
    überhaupt prüfbar zu sein — und er fasst `SecurityConfig` an, dieselbe Datei wie die
    Endpunkt-Regeln.
-4. **`feature/auth-frontend`** — zweigt vom **gemergten** `main` ab, nicht vom heutigen Stand,
-   und arbeitet gegen das fertige Token-Modell.
+4. **`feature/auth-frontend`** *(abgeschlossen)* — Vue-Projekt, Tailwind, Auth-Store, Login- und
+   Registrierungsformular, Router mit Guard, Start-Reihenfolge in `main.ts`, Request- und
+   Response-Interceptor, Vitest-Test für die Refresh-Sperre. Zweigte vom **gemergten** `main` ab
+   und arbeitete gegen das fertige Token-Modell.
 
 **Tests** laufen im jeweiligen Branch mit, nicht in einem eigenen: Test und zugehöriger Code
 sind dasselbe Stück Arbeit. Die Historie trennt das über den Commit-Typ `test`.
@@ -413,24 +477,42 @@ sind dasselbe Stück Arbeit. Die Historie trennt das über den Commit-Typ `test`
 aus bereits gemergten Bereichen), gehört direkt auf `main` — sonst erbt ein später abzweigender
 Branch die Änderung nicht.
 
-### Testabdeckung (Stand nach `feature/auth`)
+### Nächste Branches
 
-33 Tests, alle Sicherheitsentscheidungen maschinell abgesichert:
+1. **`feature/user-management`** — Benutzername und Passwort ändern. Backend und Frontend
+   zusammen, weil der Umfang klein ist.
+2. **`chore/integration-tests`** — die vertagten Test-Lücken (siehe unten) plus der
+   Integrationstest mit Testcontainers.
+3. **CI mit GitHub Actions** — Build und Tests bei jedem Push. Als Lernziel gewollt.
+4. **MVP-Schritt 2: Projekte.**
+
+### Testabdeckung
+
+36 Tests, alle Sicherheitsentscheidungen maschinell abgesichert:
 
 | Klasse | Tests | Ebene | Kernaussagen |
 |---|---|---|---|
-| `JwtServiceTest` | 4 | Unit | Signaturprüfung greift, Manipulation wird erkannt, Ablauf wirkt |
-| `RefreshTokenServiceTest` | 6 | Unit | Klartext landet nie in der DB, Widerruf wird *gespeichert* |
-| `UserServiceTest` | 4 | Unit | Passwort wird gehasht, E-Mail normalisiert |
-| `AuthServiceTest` | 9 | Unit | Keine Enumeration, Rotation entwertet das *alte* Token, Logout wirft nie |
-| `AuthControllerTest` | 10 | Web-Layer | Statuscodes, Cookie-Attribute, Refresh-Token *nicht* im Body |
+| `JwtServiceTest` | 4 | Unit (BE) | Signaturprüfung greift, Manipulation wird erkannt, Ablauf wirkt |
+| `RefreshTokenServiceTest` | 6 | Unit (BE) | Klartext landet nie in der DB, Widerruf wird *gespeichert* |
+| `UserServiceTest` | 4 | Unit (BE) | Passwort wird gehasht, E-Mail normalisiert |
+| `AuthServiceTest` | 9 | Unit (BE) | Keine Enumeration, Rotation entwertet das *alte* Token, Logout wirft nie |
+| `AuthControllerTest` | 10 | Web-Layer (BE) | Statuscodes, Cookie-Attribute, Refresh-Token *nicht* im Body |
+| `interceptors.spec.ts` | 3 | Unit (FE) | Ein Refresh bei parallelen 401ern, kein Refresh ohne Not, geordneter Abgang bei Fehlschlag |
 
-**Werkzeuge:** Mockito nur dort, wo eine Abhängigkeit Verhalten hat (Repositories, Services) —
-reine Datenhalter wie `JwtProperties` werden mit `new` erzeugt. `ArgumentCaptor`, um zu prüfen
-was der Code *erzeugt* hat, statt was der Mock zurückgibt. `ReflectionTestUtils`, um einer
-`User`-Entität im Test eine generierte ID zu geben. `@WebMvcTest` mit `@Import` der
+**Werkzeuge Backend:** Mockito nur dort, wo eine Abhängigkeit Verhalten hat (Repositories,
+Services) — reine Datenhalter wie `JwtProperties` werden mit `new` erzeugt. `ArgumentCaptor`, um
+zu prüfen was der Code *erzeugt* hat, statt was der Mock zurückgibt. `ReflectionTestUtils`, um
+einer `User`-Entität im Test eine generierte ID zu geben. `@WebMvcTest` mit `@Import` der
 Sicherheitskomponenten — Mocks von Filtern funktionieren nicht, sie reichen die Anfrage nicht
 weiter.
+
+**Werkzeuge Frontend:** Axios-Adapter statt Mock-Bibliothek (die Interceptors laufen um den
+Adapter herum und werden dadurch mitgeprüft), `vi.hoisted` für gemockte Module, Reset der
+Modul-Singletons im `beforeEach`. Details im Cheatsheet.
+
+**Nachweis durch absichtliches Brechen:** Der Test der Refresh-Sperre wurde einmal ohne die
+Sperre laufen gelassen und zeigte wie erwartet zwei Refreshes statt einem. Erst damit ist das
+Grün eine Aussage.
 
 ### Vertagte Tests (bewusst später)
 
@@ -443,9 +525,24 @@ weiter.
 - **Integrationstest mit Testcontainers:** Registrierung → Login → Refresh → Logout gegen eine
   echte Datenbank. Schließt die beiden vorigen Lücken weitgehend in einem Durchlauf. Die
   Abhängigkeiten liegen seit dem ersten Tag in der `pom.xml` und sind ungenutzt.
+- **Frontend:** Formulare, Views und die Happy Paths im Store sind ungetestet — bewusst, weil
+  das Klick-Tests für Dinge wären, die manuell durchgeklickt wurden. Playwright ist eingerichtet
+  und ungenutzt; ein Ende-zu-Ende-Test „Anmelden bis geschützte Seite" wäre der erste sinnvolle.
 
 ### Offene Punkte im Auth-Umfeld
 
+- **`UserDetailsServiceAutoConfiguration` abschalten.** Spring Boot legt beim Start einen
+  In-Memory-Benutzer mit Zufallspasswort an, weil kein `UserDetailsService`-Bean existiert —
+  `AuthService` prüft das Passwort selbst. Aktuell harmlos, weil kein Endpunkt diesen Weg
+  benutzt, aber ein ungenutzter Anmeldeweg im Kontext. Lösung:
+  `@SpringBootApplication(exclude = UserDetailsServiceAutoConfiguration.class)` oder
+  `spring.autoconfigure.exclude`. Nachweis: Der Start-Log enthält kein
+  `Using generated security password`. Zu erledigen in `chore/integration-tests`.
+- **Prettier und `.vscode/settings.json`** einführen — 2 Leerzeichen, `singleQuote`, kein
+  Semikolon, `printWidth` 100. Gehört nach der Reihenfolge-Regel auf `main`, **bevor** der
+  nächste Branch abzweigt; der große Formatier-Durchlauf danach in einen eigenen
+  `chore(config)`-Commit, damit er sich nicht mit echten Änderungen vermischt. Aktuell liegen im
+  Frontend beide Einrückungsstile gemischt vor.
 - **Aufräumjob** für abgelaufene und widerrufene `refresh_token`-Zeilen. Erst dann lohnt sich
   ein Index auf `expires_at` — vorher wäre er reine Schreiblast auf der schreibintensivsten
   Tabelle des Systems.
@@ -455,7 +552,9 @@ weiter.
   Fallstricken. Erstmals aufgefallen beim Testen der Rotation: Zwei über eine Hilfsmethode
   erzeugte `RefreshToken`-Objekte sind für Mockito verschieden.
 - **`MeController`** (`/api/me`) ist ein Wegwerf-Endpunkt zum Nachweis des JWT-Filters. Ersetzen
-  durch einen echten `/api/users/me`, sobald das User-Feature wächst.
+  durch einen echten `/api/users/me`, sobald das User-Feature wächst. Dasselbe gilt im Frontend
+  für `HomeView.vue` samt „Reload profile"-Knopf und für die `AppNavbar` mit ihren Links auf
+  Login und Registrierung — beides sind Testwerkzeuge, keine Zielzustände.
 - **`MissingRequestCookieException`-Handler** meldet „Refresh failed" — passt, solange der
   Refresh der einzige Endpunkt mit Pflicht-Cookie ist.
 - **Framework-Fehler jenseits von 404** (405, 415) liefern weiterhin Springs Standardformat.
@@ -470,4 +569,4 @@ weiter.
 
 ---
 
-*handout-manager · Projektplanung · MVP-Schritt 1 (Auth Backend) abgeschlossen*
+*handout-manager · Projektplanung · MVP-Schritt 1 (Auth) abgeschlossen*
