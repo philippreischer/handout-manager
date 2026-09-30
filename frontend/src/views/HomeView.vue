@@ -1,21 +1,14 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
 import client from '@/api/httpClient'
-import { useAuthStore } from '@/stores/useAuthStore'
 import { extractErrorMessage } from '@/api/errorMessage'
-
-const authStore = useAuthStore()
 
 const userId = ref<number | null>(null)
 const errorMessage = ref<string | null>(null)
 
 onMounted(async () => {
   try {
-    // TODO: the Authorization header is set by hand here.
-    // Once the request interceptor exists, it attaches the token automatically.
-    const response = await client.get<number>('/api/me', {
-      headers: { Authorization: `Bearer ${authStore.accessToken}` },
-    })
+    const response = await client.get<number>('/api/me')
     userId.value = response.data
   } catch (error) {
     errorMessage.value = extractErrorMessage(error, 'Could not load profile.')
