@@ -1,6 +1,6 @@
 # handout-manager — Naming Conventions Cheatsheet
 
-**v0.3 · in Verwendung**
+**v0.4 · in Verwendung**
 
 Analog zum A11yForge-Cheatsheet. Generische Konventionen übernommen, Domänen-Glossar neu auf dieses Projekt gemünzt.
 
@@ -14,6 +14,11 @@ Analog zum A11yForge-Cheatsheet. Generische Konventionen übernommen, Domänen-G
 - Keine Abkürzungen außer etablierte: `id`, `url`, `html`, `jwt`, `api`, `dto`.
 - Booleans mit Präfix: `is` / `has` / `should` / `can` — z. B. `isGameMaster`, `hasAccess`, `canView`.
 - Domänenbegriffe konsistent über **alle** Schichten. Nie synonymisch mischen (siehe Glossar).
+- **Kommentare halten Randbedingungen fest, nicht was der Code tut.** Ein Kommentar, der die
+  Zeile paraphrasiert, ist Ballast — der Code sagt es schon. Wertvoll ist ein Kommentar, der
+  eine nicht offensichtliche Reihenfolge, eine Framework-Eigenheit oder einen Grund *gegen* die
+  naheliegende Lösung festhält: genau das bewahrt davor, den Fehler in drei Monaten erneut zu
+  bauen. Maßstab: Würde ein Aufräumen ohne diesen Kommentar etwas kaputtmachen? Dann bleibt er.
 
 ---
 
@@ -93,17 +98,30 @@ höher. Beide sind gültige Commit-Scopes.
 |---|---|---|
 | Komponenten-Datei | PascalCase.vue | `ResourceList.vue` |
 | Komponenten-Tag | PascalCase | `<ResourceList />` |
+| Unterordner in `components/` | nach Rolle, lowercase | `components/auth/`, `components/layout/` |
 | Composable | `use` + camelCase | `usePermissions()` |
 | Pinia-Store | `use…Store` | `useAuthStore` |
 | ref / reactive | camelCase | `selectedResource` |
 | Props | camelCase | `defineProps<{ projectId: number }>` |
 | Emits | kebab-case, Verb | `'permission-granted'`, `'resource-created'` |
 | Event-Handler | `on` / `handle` + Verb | `handleResourceCreate()` |
+| Router-Meta-Feld | camelCase | `requiresAuth`, `guestOnly` |
 | Konstante | UPPER_SNAKE | `DEFAULT_THEME` |
 | Util-Datei | camelCase.ts | `formatDate.ts` |
 
-- **Views** unter `views/`, wiederverwendbare Komponenten unter `components/`.
+- **Views** unter `views/`, wiederverwendbare Komponenten unter `components/`, dort nach Rolle
+  gruppiert. Eine View ist der **Rahmen** (Layout, Seitenstruktur), die Komponente der
+  **Inhalt** — `AuthView.vue` hält die zentrierte Karte, `LoginForm.vue` das Formular darin.
 - Komponenten-Namen **mehrteilig** (Vue-Style-Guide) — `BaseButton`, nicht `Button`.
+- **`api/`-Dateien:** `httpClient.ts` (die Axios-Instanz), `interceptors.ts` (exportiert
+  `setupInterceptors()`, aufgerufen aus `main.ts`), `errorMessage.ts` (`ProblemDetail` → Text
+  für die Anzeige). Die Interceptors liegen **bewusst nicht** in `httpClient.ts`: Der Auth-Store
+  importiert den Client, und ein Interceptor im Client müsste den Store importieren — das wäre
+  ein Zirkelimport. Eine eigene Datei, die beide kennt, löst das auf.
+- **Router-Meta-Felder werden typisiert** — `declare module 'vue-router'` mit einem erweiterten
+  `RouteMeta`-Interface (Module Augmentation). Ohne das sind Meta-Felder vom Typ `unknown` und
+  ein Tippfehler (`requiresAith`) ergibt keine Fehlermeldung, sondern eine stillschweigend
+  offene Route.
 
 ---
 
@@ -178,9 +196,12 @@ POST /api/resources/{resourceId}/permissions
 | Vitest — describe | `describe('ResourceList', …)` | |
 | Vitest — it | `it('renders only visible resources', …)` | |
 | Test-Datei (FE) | `ResourceList.spec.ts` | |
+| Test-Ordner (FE) | `__tests__` neben dem Getesteten | `src/api/__tests__/` |
 
 - Test-Klassen liegen **spiegelbildlich** zum Getesteten (gleiches Package unter `src/test/java`),
   sind package-private (kein `public`).
+- **Frontend-Tests** folgen derselben Idee: ein `__tests__`-Ordner direkt neben der geprüften
+  Datei, nicht gesammelt unter `src/components/__tests__/` wie im `create-vue`-Beispiel.
 - Test-Variable: `sut` für „system under test" (Backend).
 - Mocks mit Suffix: `permissionRepositoryMock`, `resourceServiceMock`.
 - **Testdaten als Konstanten** am Kopf der Klasse (`EMAIL`, `PASSWORD`, `ACCESS_TOKEN`), nicht
@@ -190,6 +211,25 @@ POST /api/resources/{resourceId}/permissions
 - **Aufbau immer gleich:** erst alle `when`, dann der Aufruf, dann `verify` / `assertThat`.
 - **Mocke Verhalten, nicht Daten.** Reine Datenhalter mit `new` erzeugen. `ArgumentCaptor`
   verwenden, um zu prüfen was der Code *erzeugt* hat, statt was der Mock zurückgibt.
+- **Jeden neuen Test einmal absichtlich brechen.** Die geprüfte Bedingung im Produktionscode
+  entfernen, den Test rot sehen, zurücknehmen. Grün allein heißt nur „nicht widerlegt" — erst
+  das gesehene Rot beweist, dass der Test beobachtet, was draufsteht.
+
+### Frontend-Tests — Werkzeuge
+
+- **HTTP ersetzen über den Axios-Adapter**, nicht über eine Mock-Bibliothek:
+  `client.defaults.adapter = …`. Der Adapter ist die Stelle, an der der echte Netzwerkaufruf
+  passiert — die Interceptors laufen *darum herum* und werden dadurch mitgeprüft. Wichtig: Ein
+  selbstgeschriebener Adapter muss bei Fehlerstatus **werfen**. Das Auswerten von
+  `validateStatus` machen nur die eingebauten Adapter; eine zurückgegebene 401 landet sonst im
+  Erfolgszweig.
+- **Gemockte Module brauchen `vi.hoisted`.** Vitest zieht jeden `vi.mock`-Aufruf an den
+  Dateianfang, noch vor die Imports. Eine gewöhnliche `const`-Variable ist dort noch nicht
+  deklariert; `vi.hoisted` wandert mit nach oben.
+- **Modul-Singletons im `beforeEach` zurücksetzen.** `client` lebt einmal pro Testlauf:
+  `client.interceptors.request.clear()` und `.response.clear()`, sonst stapelt jeder Test einen
+  weiteren Interceptor obendrauf. Ebenso `setActivePinia(createPinia())` — ohne laufende
+  Vue-App gibt es keine Pinia-Instanz.
 
 ---
 
@@ -225,6 +265,10 @@ Commit-Typ fehlte.)
 
 Gültige Scopes: `auth`, `user`, `project`, `membership`, `resource`, `permission`, `security`, `config`, `ui`, `theme`, `db`.
 
+**`ui` vs. Feature-Scope:** Was zu einem Anwendungsfall gehört, trägt dessen Scope — ein
+Login-Formular ist `auth`, nicht `ui`. `ui` ist für anwendungsweite Oberfläche ohne fachliche
+Zugehörigkeit: Layout, Navigation, `App.vue`.
+
 ---
 
-*handout-manager · Naming Conventions · v0.3*
+*handout-manager · Naming Conventions · v0.4*
