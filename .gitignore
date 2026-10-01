@@ -12,7 +12,11 @@
 *.ipr
  
 ### VS Code ###
-.vscode/
+# Never exclude the directory itself: Git would not descend into it, and then
+# no exception anywhere could bring a file back.
+**/.vscode/*
+!**/.vscode/settings.json
+!**/.vscode/extensions.json
  
 ### STS / Eclipse ###
 .apt_generated
