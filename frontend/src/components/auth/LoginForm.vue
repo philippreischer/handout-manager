@@ -39,9 +39,7 @@ async function handleSubmit() {
         type="email"
         required
         autocomplete="email"
-        class="w-full rounded-md border border-slate-600 bg-slate-900 px-3 py-2
-               text-slate-100 placeholder-slate-500
-               focus:border-emerald-500 focus:outline-none"
+        class="w-full rounded-md border border-slate-600 bg-slate-900 px-3 py-2 text-slate-100 placeholder-slate-500 focus:border-emerald-500 focus:outline-none"
       />
     </div>
 
@@ -53,9 +51,7 @@ async function handleSubmit() {
         type="password"
         required
         autocomplete="current-password"
-        class="w-full rounded-md border border-slate-600 bg-slate-900 px-3 py-2
-               text-slate-100 placeholder-slate-500
-               focus:border-emerald-500 focus:outline-none"
+        class="w-full rounded-md border border-slate-600 bg-slate-900 px-3 py-2 text-slate-100 placeholder-slate-500 focus:border-emerald-500 focus:outline-none"
       />
     </div>
 
@@ -66,8 +62,7 @@ async function handleSubmit() {
     <button
       type="submit"
       :disabled="isSubmitting"
-      class="w-full rounded-md bg-emerald-600 px-4 py-2 font-medium text-white
-             hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-50"
+      class="w-full rounded-md bg-emerald-600 px-4 py-2 font-medium text-white hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-50"
     >
       {{ isSubmitting ? 'Signing in…' : 'Sign in' }}
     </button>

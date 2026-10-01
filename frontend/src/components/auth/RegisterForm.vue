@@ -41,9 +41,7 @@ async function handleSubmit() {
         type="text"
         required
         autocomplete="username"
-        class="w-full rounded-md border border-slate-600 bg-slate-900 px-3 py-2
-               text-slate-100 placeholder-slate-500
-               focus:border-emerald-500 focus:outline-none"
+        class="w-full rounded-md border border-slate-600 bg-slate-900 px-3 py-2 text-slate-100 placeholder-slate-500 focus:border-emerald-500 focus:outline-none"
       />
     </div>
 
@@ -55,16 +53,12 @@ async function handleSubmit() {
         type="email"
         required
         autocomplete="email"
-        class="w-full rounded-md border border-slate-600 bg-slate-900 px-3 py-2
-               text-slate-100 placeholder-slate-500
-               focus:border-emerald-500 focus:outline-none"
+        class="w-full rounded-md border border-slate-600 bg-slate-900 px-3 py-2 text-slate-100 placeholder-slate-500 focus:border-emerald-500 focus:outline-none"
       />
     </div>
 
     <div>
-      <label for="registerPassword" class="mb-1 block text-sm text-slate-400">
-        Password
-      </label>
+      <label for="registerPassword" class="mb-1 block text-sm text-slate-400"> Password </label>
       <input
         id="registerPassword"
         v-model="password"
@@ -72,9 +66,7 @@ async function handleSubmit() {
         required
         minlength="8"
         autocomplete="new-password"
-        class="w-full rounded-md border border-slate-600 bg-slate-900 px-3 py-2
-               text-slate-100 placeholder-slate-500
-               focus:border-emerald-500 focus:outline-none"
+        class="w-full rounded-md border border-slate-600 bg-slate-900 px-3 py-2 text-slate-100 placeholder-slate-500 focus:border-emerald-500 focus:outline-none"
       />
       <p class="mt-1 text-xs text-slate-500">At least 8 characters.</p>
     </div>
@@ -86,8 +78,7 @@ async function handleSubmit() {
     <button
       type="submit"
       :disabled="isSubmitting"
-      class="w-full rounded-md bg-emerald-600 px-4 py-2 font-medium text-white
-             hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-50"
+      class="w-full rounded-md bg-emerald-600 px-4 py-2 font-medium text-white hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-50"
     >
       {{ isSubmitting ? 'Creating…' : 'Create account' }}
     </button>

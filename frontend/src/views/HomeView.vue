@@ -37,8 +37,7 @@ onMounted(loadProfile)
 
       <button
         type="button"
-        class="mt-6 w-full rounded-md bg-slate-700 px-4 py-2 font-medium text-slate-100
-               hover:bg-slate-600"
+        class="mt-6 w-full rounded-md bg-slate-700 px-4 py-2 font-medium text-slate-100 hover:bg-slate-600"
         @click="loadProfile"
       >
         Reload profile

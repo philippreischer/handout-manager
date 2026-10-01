@@ -33,8 +33,7 @@ async function handleLogout() {
         v-for="item in navItems"
         :key="item.name"
         :to="{ name: item.name }"
-        class="rounded-md px-3 py-1.5 text-sm text-slate-400
-               hover:bg-slate-700 hover:text-slate-100"
+        class="rounded-md px-3 py-1.5 text-sm text-slate-400 hover:bg-slate-700 hover:text-slate-100"
         active-class="bg-slate-700 text-slate-100"
       >
         {{ item.label }}
@@ -46,8 +45,7 @@ async function handleLogout() {
       <button
         v-if="authStore.isAuthenticated"
         type="button"
-        class="rounded-md bg-slate-700 px-3 py-1.5 text-sm font-medium text-slate-100
-               hover:bg-slate-600"
+        class="rounded-md bg-slate-700 px-3 py-1.5 text-sm font-medium text-slate-100 hover:bg-slate-600"
         @click="handleLogout"
       >
         Sign out

@@ -1,5 +1,5 @@
 import { isAxiosError } from 'axios'
- 
+
 /**
  * Extracts a readable message from an API error.
  * The backend answers with RFC 9457 ProblemDetail, so the "detail" field

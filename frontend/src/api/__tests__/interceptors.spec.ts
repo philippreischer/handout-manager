@@ -78,10 +78,7 @@ describe('interceptors', () => {
   it('refreshes only once when two requests fail at the same time', async () => {
     useAuthStore().accessToken = 'expired-access-token'
 
-    const [first, second] = await Promise.all([
-      client.get('/api/me'),
-      client.get('/api/me'),
-    ])
+    const [first, second] = await Promise.all([client.get('/api/me'), client.get('/api/me')])
 
     expect(refreshCount).toBe(1)
     expect(first.status).toBe(200)
