@@ -28,7 +28,7 @@ jobs:
           cache: maven
  
       # verify runs the unit tests and, later, the Testcontainers tests.
-      - run: mvn -B --no-transfer-progress verify
+      - run: ./mvnw -B --no-transfer-progress verify
  
   frontend:
     name: Frontend

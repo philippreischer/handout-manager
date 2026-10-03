@@ -132,6 +132,16 @@
 				<groupId>org.springframework.boot</groupId>
 				<artifactId>spring-boot-maven-plugin</artifactId>
 			</plugin>
+			<plugin>
+				<groupId>org.apache.maven.plugins</groupId>
+				<artifactId>maven-surefire-plugin</artifactId>
+				<configuration>
+					<environmentVariables>
+						<!-- Test-only secret: 32 bytes, Base64. Never used outside tests. -->
+						<JWT_SECRET>dGVzdC1vbmx5LXNlY3JldC1ub3QtZm9yLXByb2QtMzI=</JWT_SECRET>
+					</environmentVariables>
+				</configuration>
+			</plugin>
 		</plugins>
 	</build>
 
