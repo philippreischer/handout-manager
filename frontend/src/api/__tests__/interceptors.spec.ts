@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
+import type { RouteLocationRaw } from 'vue-router'
 import {
   AxiosError,
   AxiosHeaders,
@@ -10,7 +11,9 @@ import {
 
 // Hoisted so the factory below can reach it: vi.mock is moved to the top of
 // the file, above any plain const declaration.
-const { pushMock } = vi.hoisted(() => ({ pushMock: vi.fn() }))
+const { pushMock } = vi.hoisted(() => ({
+  pushMock: vi.fn<(to: RouteLocationRaw) => Promise<void>>(),
+}))
 
 vi.mock('@/router', () => ({ default: { push: pushMock } }))
 
