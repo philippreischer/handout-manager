@@ -3,6 +3,7 @@ package at.handoutmanager.backend.common;
 import at.handoutmanager.backend.auth.InvalidCredentialsException;
 import at.handoutmanager.backend.security.InvalidRefreshTokenException;
 import at.handoutmanager.backend.user.EmailAlreadyExistsException;
+import at.handoutmanager.backend.user.UserNotFoundException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
@@ -90,4 +91,16 @@ public class GlobalExceptionHandler {
         problem.setTitle("Not found");
         return problem;
     }
+
+    @ExceptionHandler(UserNotFoundException.class)
+    public ProblemDetail handleUserNotFound(UserNotFoundException ex) {
+        log.warn("User lookup failed: {}", ex.getMessage());
+
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(
+                HttpStatus.NOT_FOUND,
+                "User not found.");
+        problem.setTitle("Not found");
+        return problem;
+    }
+
 }
