@@ -1,13 +1,9 @@
 package at.handoutmanager.backend.user;
 
+import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
-import org.springframework.security.core.context.SecurityContextHolder;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
-
-import java.util.Optional;
+import org.springframework.web.bind.annotation.*;
 
 @RestController
 @RequestMapping("/api/users")
@@ -25,4 +21,20 @@ public class UserController {
 
         return ResponseEntity.ok(UserResponseDTO.from(user));
     }
+
+    @PatchMapping("/me/username")
+    public ResponseEntity<UserResponseDTO> updateUserName(
+            @AuthenticationPrincipal Long userId,
+            @Valid @RequestBody ChangeUserNameRequestDTO request) {
+
+        User user = userService.updateUserName(userId, request.password(), request.userName());
+
+        return ResponseEntity.ok(UserResponseDTO.from(user));
+    }
+
+    //@PatchMapping("/me")
+    //changePassword(){}
+
+    //@DeleteMapping("/me")
+    //deleteCurrentUser(){}
 }

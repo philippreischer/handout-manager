@@ -3,6 +3,7 @@ package at.handoutmanager.backend.common;
 import at.handoutmanager.backend.auth.InvalidCredentialsException;
 import at.handoutmanager.backend.security.InvalidRefreshTokenException;
 import at.handoutmanager.backend.user.EmailAlreadyExistsException;
+import at.handoutmanager.backend.user.PasswordMismatchException;
 import at.handoutmanager.backend.user.UserNotFoundException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -100,6 +101,15 @@ public class GlobalExceptionHandler {
                 HttpStatus.NOT_FOUND,
                 "User not found.");
         problem.setTitle("Not found");
+        return problem;
+    }
+
+    @ExceptionHandler(PasswordMismatchException.class)
+    public ProblemDetail handlePasswordMismatch(PasswordMismatchException ex) {
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(
+                HttpStatus.FORBIDDEN,
+                "Current password is incorrect.");
+        problem.setTitle("Forbidden");
         return problem;
     }
 
