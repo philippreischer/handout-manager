@@ -73,4 +73,18 @@ public class AuthService {
             log.debug("Logout with invalid or already revoked token - treated as success");
         }
     }
+
+    @Transactional
+    public AuthTokens changePassword(Long userId, String rawPassword, String newPassword) {
+        userService.changePassword(userId, rawPassword, newPassword);
+
+        refreshTokenService.revokeAllTokens(userId);
+
+        String accessToken = jwtService.generateAccessToken(userId);
+        String refreshToken = refreshTokenService.issueToken(userId);
+
+        log.info("Password changed for user {}", userId);
+
+        return new AuthTokens(accessToken, refreshToken);
+    }
 }

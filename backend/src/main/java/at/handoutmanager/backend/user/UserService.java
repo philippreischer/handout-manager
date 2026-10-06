@@ -1,6 +1,5 @@
 package at.handoutmanager.backend.user;
 
-import at.handoutmanager.backend.auth.InvalidCredentialsException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -17,11 +16,11 @@ public class UserService {
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
 
-    public UserService(UserRepository userRepository, PasswordEncoder passwordEncoder) {
+    public UserService(UserRepository userRepository,
+                       PasswordEncoder passwordEncoder) {
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
     }
-
 
     private String normalizeEmail(String email){
         return email.trim().toLowerCase(Locale.ROOT);
@@ -63,4 +62,16 @@ public class UserService {
         return userRepository.save(user);
     }
 
+    public User changePassword(Long id, String rawPassword, String newPassword) {
+        User user = findUserById(id);
+
+        if (!passwordEncoder.matches(rawPassword, user.getPasswordHash())) {
+            log.warn("Update password failed: wrong password for user {}", id);
+            throw new PasswordMismatchException("Update password");
+        }
+
+        user.setPasswordHash(passwordEncoder.encode(newPassword));
+
+        return userRepository.save(user);
+    }
 }

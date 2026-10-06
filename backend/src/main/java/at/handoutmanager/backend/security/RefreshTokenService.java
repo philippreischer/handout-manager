@@ -3,6 +3,8 @@ package at.handoutmanager.backend.security;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -10,6 +12,7 @@ import java.security.SecureRandom;
 import java.time.Instant;
 import java.util.Base64;
 import java.util.HexFormat;
+import java.util.List;
 
 @Service
 public class RefreshTokenService {
@@ -67,5 +70,18 @@ public class RefreshTokenService {
         token.setRevokedAt(Instant.now());
 
         refreshTokenRepository.save(token);
+    }
+
+    @Transactional
+    public void revokeAllTokens(Long userId) {
+        List<RefreshToken> tokens = refreshTokenRepository.findByUserIdAndRevokedAtIsNull(userId);
+
+        Instant now = Instant.now();
+        for (RefreshToken token : tokens) {
+            token.setRevokedAt(now);
+        }
+
+        refreshTokenRepository.saveAll(tokens);
+        log.info("Revoked {} refresh tokens for user {}", tokens.size(), userId);
     }
 }
