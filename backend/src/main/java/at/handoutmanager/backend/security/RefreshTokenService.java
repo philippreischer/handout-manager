@@ -54,8 +54,14 @@ public class RefreshTokenService {
                 .orElseThrow(() -> new InvalidRefreshTokenException("Refresh token not found"));
 
         if (token.getRevokedAt() != null) {
-            log.warn("Revoked refresh token presented for user {} - possible token theft",
-                    token.getUserId());
+            if (token.getRevokedReason() == RevocationReason.ROTATED) {
+                log.warn("Rotated refresh token presented again for user {} - possible token theft",
+                        token.getUserId());
+            } else {
+                log.info("Revoked refresh token presented for user {} (reason: {})",
+                        token.getUserId(), token.getRevokedReason());
+            }
+
             throw new InvalidRefreshTokenException("Refresh token has been revoked");
         }
 
@@ -66,22 +72,21 @@ public class RefreshTokenService {
         return token;
     }
 
-    public void revokeToken(RefreshToken token){
-        token.setRevokedAt(Instant.now());
-
+    public void revokeToken(RefreshToken token, RevocationReason reason) {
+        token.revoke(Instant.now(), reason);
         refreshTokenRepository.save(token);
     }
 
     @Transactional
-    public void revokeAllTokens(Long userId) {
+    public void revokeAllTokens(Long userId, RevocationReason reason) {
         List<RefreshToken> tokens = refreshTokenRepository.findByUserIdAndRevokedAtIsNull(userId);
 
         Instant now = Instant.now();
         for (RefreshToken token : tokens) {
-            token.setRevokedAt(now);
+            token.revoke(now, reason);
         }
 
         refreshTokenRepository.saveAll(tokens);
-        log.info("Revoked {} refresh tokens for user {}", tokens.size(), userId);
+        log.info("Revoked {} refresh tokens for user {} (reason: {})", tokens.size(), userId, reason);
     }
 }
