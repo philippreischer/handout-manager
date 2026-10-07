@@ -74,4 +74,16 @@ public class UserService {
 
         return userRepository.save(user);
     }
+
+    public void deleteCurrentUser(Long id, String rawPassword){
+        User user = findUserById(id);
+
+        if (!passwordEncoder.matches(rawPassword, user.getPasswordHash())) {
+            log.warn("Delete current user failed: wrong password for user {}", id);
+            throw new PasswordMismatchException("Delete current user");
+        }
+
+        userRepository.delete(user);
+        log.info("Account deleted for user {}", id);
+    }
 }

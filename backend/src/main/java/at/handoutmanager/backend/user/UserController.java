@@ -60,6 +60,17 @@ public class UserController {
                 .body(new TokenResponseDTO(tokens.accessToken()));
     }
 
-    //@DeleteMapping("/me")
-    //deleteCurrentUser(){}
+    @DeleteMapping("/me")
+    public ResponseEntity<Void> deleteCurrentUser(
+            @AuthenticationPrincipal Long userId,
+            @Valid @RequestBody DeleteCurrentUserRequestDTO request){
+
+        userService.deleteCurrentUser(userId, request.password());
+
+        ResponseCookie cookie = refreshCookieFactory.expired();
+
+        return ResponseEntity.noContent()
+                .header(HttpHeaders.SET_COOKIE, cookie.toString())
+                .build();
+    }
 }
