@@ -25,7 +25,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 @WebMvcTest(AuthController.class)
 @Import({GlobalExceptionHandler.class, SecurityConfig.class,
-        JwtAuthenticationFilter.class, RestAuthenticationEntryPoint.class})
+        JwtAuthenticationFilter.class, RestAuthenticationEntryPoint.class,
+        RefreshCookieFactory.class})
 class AuthControllerTest {
 
     private static final String ACCESS_TOKEN = "test-access-token";

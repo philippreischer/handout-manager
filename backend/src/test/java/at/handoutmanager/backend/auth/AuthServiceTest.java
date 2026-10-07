@@ -1,9 +1,6 @@
 package at.handoutmanager.backend.auth;
 
-import at.handoutmanager.backend.security.InvalidRefreshTokenException;
-import at.handoutmanager.backend.security.JwtService;
-import at.handoutmanager.backend.security.RefreshToken;
-import at.handoutmanager.backend.security.RefreshTokenService;
+import at.handoutmanager.backend.security.*;
 import at.handoutmanager.backend.user.User;
 import at.handoutmanager.backend.user.UserService;
 import org.junit.jupiter.api.Test;
@@ -124,7 +121,7 @@ class AuthServiceTest {
 
         sut.refreshTokens(OLD_REFRESH_TOKEN);
 
-        verify(refreshTokenService).revokeToken(oldToken);
+        verify(refreshTokenService).revokeToken(oldToken, RevocationReason.ROTATED);
     }
 
     @Test
@@ -146,7 +143,7 @@ class AuthServiceTest {
 
         sut.logout(OLD_REFRESH_TOKEN);
 
-        verify(refreshTokenService).revokeToken(oldToken);
+        verify(refreshTokenService).revokeToken(oldToken, RevocationReason.LOGOUT);
     }
 
     @Test
