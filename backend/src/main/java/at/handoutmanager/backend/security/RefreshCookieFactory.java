@@ -1,6 +1,5 @@
 package at.handoutmanager.backend.security;
 
-import at.handoutmanager.backend.auth.CookieProperties;
 import org.springframework.http.ResponseCookie;
 import org.springframework.stereotype.Component;
 
