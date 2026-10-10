@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/authStore'
+import { computed } from 'vue'
 
 const router = useRouter()
 const authStore = useAuthStore()
@@ -8,10 +9,17 @@ const authStore = useAuthStore()
 // Route names the navbar links to. Kept as data so adding a page
 // means adding one entry instead of another block of markup.
 const navItems = [
-  { name: 'home', label: 'Home' },
-  { name: 'login', label: 'Login' },
-  { name: 'register', label: 'Register' },
+  { name: 'home', label: 'Home', auth: true },
+  { name: 'settings', label: 'Settings', auth: true },
+  { name: 'login', label: 'Login', auth: false },
+  { name: 'register', label: 'Register', auth: false },
 ]
+
+// auth === isAuthenticated covers both directions: protected pages for
+// signed-in users, login and register only for guests.
+const visibleNavItems = computed(() =>
+  navItems.filter((item) => item.auth === authStore.isAuthenticated),
+)
 
 async function handleLogout() {
   try {
@@ -30,7 +38,7 @@ async function handleLogout() {
 
     <div class="flex gap-1">
       <RouterLink
-        v-for="item in navItems"
+        v-for="item in visibleNavItems"
         :key="item.name"
         :to="{ name: item.name }"
         class="rounded-md px-3 py-1.5 text-sm text-slate-400 hover:bg-slate-700 hover:text-slate-100"
