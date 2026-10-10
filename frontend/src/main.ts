@@ -5,7 +5,7 @@ import './assets/main.css'
 
 import App from './App.vue'
 import router from './router'
-import { useAuthStore } from '@/stores/useAuthStore'
+import { useAuthStore } from '@/stores/authStore.ts'
 import { setupInterceptors } from '@/api/interceptors'
 
 async function bootstrap() {

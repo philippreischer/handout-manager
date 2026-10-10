@@ -18,24 +18,32 @@ export const useAuthStore = defineStore('auth', () => {
       password,
     })
 
-    accessToken.value = response.data.accessToken
+    setAccessToken(response.data.accessToken)
   }
 
   async function logout() {
     try {
       await client.post('/api/auth/logout')
     } finally {
-      accessToken.value = null
+      clearSession()
     }
   }
 
   async function restoreSession() {
     try {
       const response = await client.post<TokenResponse>('/api/auth/refresh')
-      accessToken.value = response.data.accessToken
+      setAccessToken(response.data.accessToken)
     } catch {
-      accessToken.value = null
+      clearSession()
     }
+  }
+
+  function clearSession(){
+    accessToken.value = null
+  }
+
+  function setAccessToken(token: string) {
+    accessToken.value = token
   }
 
   return {
@@ -45,5 +53,7 @@ export const useAuthStore = defineStore('auth', () => {
     login,
     logout,
     restoreSession,
+    clearSession,
+    setAccessToken
   }
 })
