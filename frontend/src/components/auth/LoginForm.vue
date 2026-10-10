@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { ref, computed } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/authStore'
 import { extractErrorMessage } from '@/api/errorMessage'
 
+const route = useRoute()
 const router = useRouter()
 const authStore = useAuthStore()
 
@@ -11,6 +12,10 @@ const email = ref('')
 const password = ref('')
 const errorMessage = ref<string | null>(null)
 const isSubmitting = ref(false)
+
+// Set by the settings page after a successful deletion. The value can be a
+// string, an array or null depending on the URL, so compare strictly.
+const accountDeleted = computed(() => route.query.deleted === '1')
 
 async function handleSubmit() {
   errorMessage.value = null
@@ -30,6 +35,10 @@ async function handleSubmit() {
 <template>
   <form class="space-y-5" @submit.prevent="handleSubmit">
     <h2 class="text-lg font-semibold text-slate-200">Sign in</h2>
+
+    <p v-if="accountDeleted" class="text-sm text-emerald-400">
+      Your account has been deleted.
+    </p>
 
     <div>
       <label for="email" class="mb-1 block text-sm text-slate-400">Email</label>
