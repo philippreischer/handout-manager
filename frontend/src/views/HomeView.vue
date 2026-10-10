@@ -1,30 +1,35 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
-import client from '@/api/httpClient'
+import { useUserStore } from '@/stores/userStore'
 import { extractErrorMessage } from '@/api/errorMessage'
-import type { UserResponse } from '@/types/user'
 
-const user = ref<UserResponse | null>(null)
+const userStore = useUserStore()
 const errorMessage = ref<string | null>(null)
 
 // The string becomes a Date only here, for display. Keeping the raw value in
-// the ref means it still matches what the server sent.
+// the store means it still matches what the server sent.
 const memberSince = computed(() =>
-  user.value ? new Date(user.value.createdAt).toLocaleDateString() : '',
+  userStore.user ? new Date(userStore.user.createdAt).toLocaleDateString() : '',
 )
 
 async function loadProfile() {
   errorMessage.value = null
 
   try {
-    const response = await client.get<UserResponse>('/api/users/me')
-    user.value = response.data
+    await userStore.loadUser()
   } catch (error) {
     errorMessage.value = extractErrorMessage(error, 'Could not load profile.')
   }
 }
+    
+onMounted(() => {
+  // Bootstrap already loaded the user on startup. Only fetch when it is missing,
+  // which happens if that request failed.
+  if (userStore.user === null) {
+    void loadProfile()
+  }
+})
 
-onMounted(loadProfile)
 </script>
 
 <template>
@@ -33,14 +38,14 @@ onMounted(loadProfile)
     <div class="w-full max-w-md rounded-xl bg-slate-800 p-8 shadow-xl">
       <h1 class="mb-6 text-2xl font-bold text-slate-100">Your account</h1>
 
-      <dl v-if="user" class="space-y-3 text-sm">
+      <dl v-if="userStore.user" class="space-y-3 text-sm">
         <div class="flex justify-between gap-4">
           <dt class="text-slate-400">Username</dt>
-          <dd class="text-slate-100">{{ user.userName }}</dd>
+          <dd class="text-slate-100">{{ userStore.user.userName }}</dd>
         </div>
         <div class="flex justify-between gap-4">
           <dt class="text-slate-400">Email</dt>
-          <dd class="text-slate-100">{{ user.email }}</dd>
+          <dd class="text-slate-100">{{ userStore.user.email }}</dd>
         </div>
         <div class="flex justify-between gap-4">
           <dt class="text-slate-400">Member since</dt>
