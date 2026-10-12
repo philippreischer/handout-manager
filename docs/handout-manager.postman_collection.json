@@ -17,7 +17,7 @@
             "header": [],
             "body": {
               "mode": "raw",
-              "raw": "{\r\n  \"email\": \"max2@mustermann.com\",\r\n  \"password\": \"pass1234\",\r\n  \"userName\": \"Max\"\r\n}",
+              "raw": "{\r\n  \"email\": \"max@mustermann.com\",\r\n  \"password\": \"pass1234\",\r\n  \"userName\": \"Max\"\r\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -40,12 +40,23 @@
         },
         {
           "name": "Login",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.environment.set(\"accessToken\", pm.response.json().accessToken);"
+                ]
+              }
+            }
+          ],
           "request": {
             "method": "POST",
             "header": [],
             "body": {
               "mode": "raw",
-              "raw": "{\r\n  \"email\": \"max2@mustermann.com\",\r\n  \"password\": \"pass1234\"\r\n}",
+              "raw": "{\r\n  \"email\": \"max@mustermann.com\",\r\n  \"password\": \"pass1234\"\r\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -68,33 +79,20 @@
         },
         {
           "name": "Refresh",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.environment.set(\"accessToken\", pm.response.json().accessToken);"
+                ]
+              }
+            }
+          ],
           "request": {
             "method": "POST",
             "header": [],
-            "url": {
-              "raw": "{{baseUrl}}/api/auth/refresh",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "api",
-                "auth",
-                "refresh"
-              ]
-            }
-          },
-          "response": []
-        },
-        {
-          "name": "New Request",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Cookie",
-                "value": "refresh_token=5eq8LZqU-vLCT-RqjJIvKVSy-pF8NszfmjFFURXDPFc"
-              }
-            ],
             "url": {
               "raw": "{{baseUrl}}/api/auth/refresh",
               "host": [
@@ -127,27 +125,168 @@
             }
           },
           "response": []
-        },
+        }
+      ]
+    },
+    {
+      "name": "users",
+      "item": [
         {
-          "name": "MeControllerTest",
+          "name": "GetCurrentUser",
           "request": {
             "auth": {
-              "type": "bearer"
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{accessToken}}",
+                  "type": "string"
+                }
+              ]
             },
             "method": "GET",
-            "header": [
-              {
-                "key": "Authorization",
-                "value": "Bearer "
-              }
-            ],
+            "header": [],
             "url": {
-              "raw": "{{baseUrl}}/api/me",
+              "raw": "{{baseUrl}}/api/users/me",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
                 "api",
+                "users",
+                "me"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "UpdateUserName",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{accessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "PATCH",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\r\n  \"password\": \"pass1234\",\r\n  \"userName\": \"MaxNeu\"\r\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/users/me/username",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "users",
+                "me",
+                "username"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "changePassword",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.environment.set(\"accessToken\", pm.response.json().accessToken);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{accessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "PATCH",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\r\n  \"password\": \"pass1234\",\r\n  \"newPassword\": \"pass12345\"\r\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/users/me/password?Authorization=Bearer",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "users",
+                "me",
+                "password"
+              ],
+              "query": [
+                {
+                  "key": "Authorization",
+                  "value": "Bearer"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Delete Current User",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{accessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "DELETE",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\r\n  \"password\": \"pass12345\"\r\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/users/me",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "users",
                 "me"
               ]
             }
