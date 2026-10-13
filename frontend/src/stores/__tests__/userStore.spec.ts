@@ -8,10 +8,10 @@ import type { UserResponse } from '@/types/user'
 
 vi.mock('@/api/httpClient', () => ({
   default: {
-    get: vi.fn(),
-    post: vi.fn(),
-    patch: vi.fn(),
-    delete: vi.fn(),
+    get: vi.fn<typeof client.get>(),
+    post: vi.fn<typeof client.post>(),
+    patch: vi.fn<typeof client.patch>(),
+    delete: vi.fn<typeof client.delete>(),
   },
 }))
 
@@ -26,6 +26,7 @@ const PASSWORD = 'pass1234'
 const NEW_PASSWORD = 'newpass1234'
 const NEW_USER_NAME = 'Moritz'
 const ACCESS_TOKEN = 'new-access-token'
+const WRONG_PASSWORD = 'wrong-password'
 
 function response<T>(data: T) {
   return { data } as AxiosResponse<T>
@@ -98,12 +99,12 @@ describe('userStore', () => {
   })
 
   it('should not touch the session when the password is wrong', async () => {
-    vi.mocked(client.delete).mockRejectedValue(new Error('403'))
+    vi.mocked(client.delete).mockRejectedValue(new Error('request failed'))
     const userStore = useUserStore()
     const authStore = useAuthStore()
     authStore.setAccessToken(ACCESS_TOKEN)
 
-    await expect(userStore.deleteAccount('wrong-password')).rejects.toThrow()
+    await expect(userStore.deleteAccount(WRONG_PASSWORD)).rejects.toThrow('request failed')
 
     expect(authStore.accessToken).toBe(ACCESS_TOKEN)
   })
