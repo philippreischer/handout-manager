@@ -1,7 +1,7 @@
 import type { AxiosError, InternalAxiosRequestConfig } from 'axios'
 import client from '@/api/httpClient'
 import router from '@/router'
-import { useAuthStore } from '@/stores/useAuthStore'
+import { useAuthStore } from '@/stores/authStore'
 
 type RetriableConfig = InternalAxiosRequestConfig & { _isRetry?: boolean }
 

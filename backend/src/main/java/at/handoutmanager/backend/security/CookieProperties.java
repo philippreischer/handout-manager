@@ -1,4 +1,4 @@
-package at.handoutmanager.backend.auth;
+package at.handoutmanager.backend.security;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
 

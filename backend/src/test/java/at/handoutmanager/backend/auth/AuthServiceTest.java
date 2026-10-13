@@ -1,13 +1,12 @@
 package at.handoutmanager.backend.auth;
 
-import at.handoutmanager.backend.security.InvalidRefreshTokenException;
-import at.handoutmanager.backend.security.JwtService;
-import at.handoutmanager.backend.security.RefreshToken;
-import at.handoutmanager.backend.security.RefreshTokenService;
+import at.handoutmanager.backend.security.*;
+import at.handoutmanager.backend.user.PasswordMismatchException;
 import at.handoutmanager.backend.user.User;
 import at.handoutmanager.backend.user.UserService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.InOrder;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -24,10 +23,12 @@ import static org.mockito.Mockito.*;
 @ExtendWith(MockitoExtension.class)
 class AuthServiceTest {
 
+    private static final Long USER_ID = 1L;
     private static final String EMAIL = "max@mustermann.com";
     private static final String UNKNOWN_EMAIL = "unknown@example.com";
     private static final String PASSWORD = "pass1234";
     private static final String WRONG_PASSWORD = "wrong-password";
+    private static final String NEW_PASSWORD = "newpass1234";
     private static final String PASSWORD_HASH = "hashed-pass";
     private static final String ACCESS_TOKEN = "test-access-token";
     private static final String REFRESH_TOKEN = "refresh-token-must-not-leak";
@@ -124,7 +125,7 @@ class AuthServiceTest {
 
         sut.refreshTokens(OLD_REFRESH_TOKEN);
 
-        verify(refreshTokenService).revokeToken(oldToken);
+        verify(refreshTokenService).revokeToken(oldToken, RevocationReason.ROTATED);
     }
 
     @Test
@@ -146,7 +147,7 @@ class AuthServiceTest {
 
         sut.logout(OLD_REFRESH_TOKEN);
 
-        verify(refreshTokenService).revokeToken(oldToken);
+        verify(refreshTokenService).revokeToken(oldToken, RevocationReason.LOGOUT);
     }
 
     @Test
@@ -156,6 +157,40 @@ class AuthServiceTest {
 
         assertThatCode(() -> sut.logout(OLD_REFRESH_TOKEN))
                 .doesNotThrowAnyException();
+    }
+
+    //ChangePassword
+    @Test
+    void shouldRevokeAllTokensAndIssueNewPair_whenPasswordChangeSucceeds(){
+        when(jwtService.generateAccessToken(USER_ID)).thenReturn(ACCESS_TOKEN);
+        when(refreshTokenService.issueToken(USER_ID)).thenReturn(NEW_REFRESH_TOKEN);
+
+        AuthTokens result = sut.changePassword(USER_ID, PASSWORD, NEW_PASSWORD);
+
+        assertThat(result.accessToken()).isEqualTo(ACCESS_TOKEN);
+        assertThat(result.refreshToken()).isEqualTo(NEW_REFRESH_TOKEN);
+
+        // The order is the point: revoking before the password is verified would
+        // log out a user who only mistyped. Issuing before revoking would kill
+        // the pair that was just handed out.
+        InOrder inOrder = inOrder(userService, refreshTokenService);
+        inOrder.verify(userService).changePassword(USER_ID, PASSWORD, NEW_PASSWORD);
+        inOrder.verify(refreshTokenService)
+                .revokeAllTokens(USER_ID, RevocationReason.PASSWORD_CHANGED);
+        inOrder.verify(refreshTokenService).issueToken(USER_ID);
+    }
+
+    @Test
+    void shouldNotRevokeAnything_whenCurrentPasswordIsWrong(){
+        doThrow(new PasswordMismatchException("Change password"))
+                .when(userService).changePassword(USER_ID, WRONG_PASSWORD, NEW_PASSWORD);
+
+        assertThatThrownBy(() -> sut.changePassword(USER_ID, WRONG_PASSWORD, NEW_PASSWORD))
+                .isInstanceOf(PasswordMismatchException.class);
+
+        verify(refreshTokenService, never()).revokeAllTokens(any(), any());
+        verify(refreshTokenService, never()).issueToken(any());
+        verify(jwtService, never()).generateAccessToken(any());
     }
 
     //Helper

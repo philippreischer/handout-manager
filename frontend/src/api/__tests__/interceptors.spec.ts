@@ -9,8 +9,6 @@ import {
   type InternalAxiosRequestConfig,
 } from 'axios'
 
-// Hoisted so the factory below can reach it: vi.mock is moved to the top of
-// the file, above any plain const declaration.
 const { pushMock } = vi.hoisted(() => ({
   pushMock: vi.fn<(to: RouteLocationRaw) => Promise<void>>(),
 }))
@@ -19,7 +17,7 @@ vi.mock('@/router', () => ({ default: { push: pushMock } }))
 
 import client from '@/api/httpClient'
 import { setupInterceptors } from '@/api/interceptors'
-import { useAuthStore } from '@/stores/useAuthStore'
+import { useAuthStore } from '@/stores/authStore'
 
 let refreshCount = 0
 let accessTokenIsValid = false
@@ -41,8 +39,6 @@ function unauthorized(config: InternalAxiosRequestConfig): AxiosError {
   return new AxiosError('401', AxiosError.ERR_BAD_REQUEST, config, undefined, response)
 }
 
-// Replaces the layer that would talk to the network. The interceptors run
-// around it, exactly as they do against a real server.
 const adapter: AxiosAdapter = async (config) => {
   if (config.url === '/api/auth/refresh') {
     refreshCount += 1

@@ -3,6 +3,8 @@ package at.handoutmanager.backend.security;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -10,6 +12,7 @@ import java.security.SecureRandom;
 import java.time.Instant;
 import java.util.Base64;
 import java.util.HexFormat;
+import java.util.List;
 
 @Service
 public class RefreshTokenService {
@@ -51,8 +54,14 @@ public class RefreshTokenService {
                 .orElseThrow(() -> new InvalidRefreshTokenException("Refresh token not found"));
 
         if (token.getRevokedAt() != null) {
-            log.warn("Revoked refresh token presented for user {} - possible token theft",
-                    token.getUserId());
+            if (token.getRevokedReason() == RevocationReason.ROTATED) {
+                log.warn("Rotated refresh token presented again for user {} - possible token theft",
+                        token.getUserId());
+            } else {
+                log.info("Revoked refresh token presented for user {} (reason: {})",
+                        token.getUserId(), token.getRevokedReason());
+            }
+
             throw new InvalidRefreshTokenException("Refresh token has been revoked");
         }
 
@@ -63,9 +72,21 @@ public class RefreshTokenService {
         return token;
     }
 
-    public void revokeToken(RefreshToken token){
-        token.setRevokedAt(Instant.now());
-
+    public void revokeToken(RefreshToken token, RevocationReason reason) {
+        token.revoke(Instant.now(), reason);
         refreshTokenRepository.save(token);
+    }
+
+    @Transactional
+    public void revokeAllTokens(Long userId, RevocationReason reason) {
+        List<RefreshToken> tokens = refreshTokenRepository.findByUserIdAndRevokedAtIsNull(userId);
+
+        Instant now = Instant.now();
+        for (RefreshToken token : tokens) {
+            token.revoke(now, reason);
+        }
+
+        refreshTokenRepository.saveAll(tokens);
+        log.info("Revoked {} refresh tokens for user {} (reason: {})", tokens.size(), userId, reason);
     }
 }

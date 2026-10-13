@@ -1,6 +1,6 @@
 package at.handoutmanager.backend.auth;
 
-import at.handoutmanager.backend.security.JwtProperties;
+import at.handoutmanager.backend.security.RefreshCookieFactory;
 import at.handoutmanager.backend.user.UserService;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpHeaders;
@@ -13,27 +13,20 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.CookieValue;
 
-import java.time.Duration;
-
 @RestController
 @RequestMapping("/api/auth")
 public class AuthController {
 
-    private static final String REFRESH_TOKEN_COOKIE = "refresh_token";
-
     private final UserService userService;
     private final AuthService authService;
-    private final JwtProperties jwtProperties;
-    private final CookieProperties cookieProperties;
+    private final RefreshCookieFactory refreshCookieFactory;
 
     public AuthController(UserService userService,
                           AuthService authService,
-                          JwtProperties jwtProperties,
-                          CookieProperties cookieProperties) {
+                          RefreshCookieFactory refreshCookieFactory) {
         this.userService = userService;
         this.authService = authService;
-        this.jwtProperties = jwtProperties;
-        this.cookieProperties = cookieProperties;
+        this.refreshCookieFactory = refreshCookieFactory;
     }
 
     @PostMapping("/register")
@@ -46,20 +39,19 @@ public class AuthController {
     public ResponseEntity<TokenResponseDTO> login(@Valid @RequestBody LoginRequestDTO request){
         AuthTokens tokens = authService.login(request.email(), request.password());
 
-        ResponseCookie cookie = buildRefreshCookie(tokens.refreshToken(), jwtProperties.getRefreshTokenTtl());
+        ResponseCookie cookie = refreshCookieFactory.create(tokens.refreshToken());
 
         return ResponseEntity.ok()
                 .header(HttpHeaders.SET_COOKIE, cookie.toString())
                 .body(new TokenResponseDTO(tokens.accessToken()));
-
     }
 
     @PostMapping("/refresh")
     public ResponseEntity<TokenResponseDTO> refresh(
-            @CookieValue(REFRESH_TOKEN_COOKIE) String rawRefreshToken) {
+            @CookieValue(RefreshCookieFactory.COOKIE_NAME) String rawRefreshToken) {
         AuthTokens tokens = authService.refreshTokens(rawRefreshToken);
 
-        ResponseCookie cookie = buildRefreshCookie(tokens.refreshToken(), jwtProperties.getRefreshTokenTtl());
+        ResponseCookie cookie = refreshCookieFactory.create(tokens.refreshToken());
 
         return ResponseEntity.ok()
                 .header(HttpHeaders.SET_COOKIE, cookie.toString())
@@ -68,28 +60,16 @@ public class AuthController {
 
     @PostMapping("/logout")
     public ResponseEntity<Void> logout(
-            @CookieValue(value = REFRESH_TOKEN_COOKIE, required = false) String rawRefreshToken) {
+            @CookieValue(value = RefreshCookieFactory.COOKIE_NAME, required = false) String rawRefreshToken) {
 
         if (rawRefreshToken != null) {
             authService.logout(rawRefreshToken);
         }
 
-        ResponseCookie cookie = buildRefreshCookie("", Duration.ZERO);
+        ResponseCookie cookie = refreshCookieFactory.expired();
 
         return ResponseEntity.noContent()
                 .header(HttpHeaders.SET_COOKIE, cookie.toString())
                 .build();
-
     }
-
-    private ResponseCookie buildRefreshCookie(String value, Duration maxAge) {
-        return ResponseCookie.from(REFRESH_TOKEN_COOKIE, value)
-                .httpOnly(true)
-                .secure(cookieProperties.isSecure())
-                .sameSite(cookieProperties.getSameSite())
-                .path("/api/auth")
-                .maxAge(maxAge)
-                .build();
-    }
-
 }

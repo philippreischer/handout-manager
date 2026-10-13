@@ -1,9 +1,6 @@
 package at.handoutmanager.backend.auth;
 
-import at.handoutmanager.backend.security.InvalidRefreshTokenException;
-import at.handoutmanager.backend.security.JwtService;
-import at.handoutmanager.backend.security.RefreshToken;
-import at.handoutmanager.backend.security.RefreshTokenService;
+import at.handoutmanager.backend.security.*;
 import at.handoutmanager.backend.user.User;
 import at.handoutmanager.backend.user.UserService;
 import org.slf4j.Logger;
@@ -55,7 +52,7 @@ public class AuthService {
     public AuthTokens refreshTokens(String rawRefreshToken){
 
         RefreshToken refreshToken = refreshTokenService.validateToken(rawRefreshToken);
-        refreshTokenService.revokeToken(refreshToken);
+        refreshTokenService.revokeToken(refreshToken, RevocationReason.ROTATED);
         Long userId = refreshToken.getUserId();
 
         String accessToken = jwtService.generateAccessToken(userId);
@@ -68,9 +65,23 @@ public class AuthService {
     public void logout(String rawRefreshToken){
         try {
             RefreshToken refreshToken = refreshTokenService.validateToken(rawRefreshToken);
-            refreshTokenService.revokeToken(refreshToken);
+            refreshTokenService.revokeToken(refreshToken, RevocationReason.LOGOUT);
         } catch (InvalidRefreshTokenException e) {
             log.debug("Logout with invalid or already revoked token - treated as success");
         }
+    }
+
+    @Transactional
+    public AuthTokens changePassword(Long userId, String rawPassword, String newPassword) {
+        userService.changePassword(userId, rawPassword, newPassword);
+
+        refreshTokenService.revokeAllTokens(userId, RevocationReason.PASSWORD_CHANGED);
+
+        String accessToken = jwtService.generateAccessToken(userId);
+        String refreshToken = refreshTokenService.issueToken(userId);
+
+        log.info("Password changed for user {}", userId);
+
+        return new AuthTokens(accessToken, refreshToken);
     }
 }

@@ -31,12 +31,21 @@ public class RefreshToken {
     @Column(name = "revoked_at")
     private Instant revokedAt;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "revoked_reason", length = 30)
+    private RevocationReason revokedReason;
+
     protected RefreshToken(){}
 
     public RefreshToken(Long userId, String tokenHash, Instant expiresAt) {
         this.userId = userId;
         this.tokenHash = tokenHash;
         this.expiresAt = expiresAt;
+    }
+
+    public void revoke(Instant revokedAt, RevocationReason reason) {
+        this.revokedAt = revokedAt;
+        this.revokedReason = reason;
     }
 
     public Long getId() {
@@ -63,7 +72,7 @@ public class RefreshToken {
         return revokedAt;
     }
 
-    public void setRevokedAt(Instant revokedAt) {
-        this.revokedAt = revokedAt;
+    public RevocationReason getRevokedReason() {
+        return revokedReason;
     }
 }
