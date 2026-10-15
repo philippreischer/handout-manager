@@ -5,13 +5,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
-import java.security.SecureRandom;
 import java.time.Instant;
-import java.util.Base64;
-import java.util.HexFormat;
 import java.util.List;
 
 @Service
@@ -21,7 +15,6 @@ public class RefreshTokenService {
 
     private final RefreshTokenRepository refreshTokenRepository;
     private final JwtProperties jwtProperties;
-    private final SecureRandom secureRandom = new SecureRandom();
 
     public RefreshTokenService(RefreshTokenRepository refreshTokenRepository, JwtProperties jwtProperties) {
         this.refreshTokenRepository = refreshTokenRepository;
@@ -29,28 +22,16 @@ public class RefreshTokenService {
     }
 
     public String issueToken(Long userId) {
-        byte[] randomBytes = new byte[32];
-        secureRandom.nextBytes(randomBytes);
-        String rawToken = Base64.getUrlEncoder().withoutPadding().encodeToString(randomBytes);
+        String rawToken = SecureTokenUtil.createRawToken();
 
         Instant expiresAt = Instant.now().plus(jwtProperties.getRefreshTokenTtl());
-        refreshTokenRepository.save(new RefreshToken(userId, hash(rawToken), expiresAt));
+        refreshTokenRepository.save(new RefreshToken(userId, SecureTokenUtil.hash(rawToken), expiresAt));
 
         return rawToken;
     }
 
-    private String hash(String rawToken) {
-        try {
-            MessageDigest digest = MessageDigest.getInstance("SHA-256");
-            byte[] hashBytes = digest.digest(rawToken.getBytes(StandardCharsets.UTF_8));
-            return HexFormat.of().formatHex(hashBytes);
-        } catch (NoSuchAlgorithmException e) {
-            throw new IllegalStateException("SHA-256 is not available", e);
-        }
-    }
-
     public RefreshToken validateToken(String rawToken) {
-        RefreshToken token = refreshTokenRepository.findByTokenHash(hash(rawToken))
+        RefreshToken token = refreshTokenRepository.findByTokenHash(SecureTokenUtil.hash(rawToken))
                 .orElseThrow(() -> new InvalidRefreshTokenException("Refresh token not found"));
 
         if (token.getRevokedAt() != null) {
