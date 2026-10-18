@@ -20,13 +20,16 @@ public class AuthController {
     private final UserService userService;
     private final AuthService authService;
     private final RefreshCookieFactory refreshCookieFactory;
+    private final PasswordResetService passwordResetService;
 
     public AuthController(UserService userService,
                           AuthService authService,
-                          RefreshCookieFactory refreshCookieFactory) {
+                          RefreshCookieFactory refreshCookieFactory,
+                          PasswordResetService passwordResetService) {
         this.userService = userService;
         this.authService = authService;
         this.refreshCookieFactory = refreshCookieFactory;
+        this.passwordResetService = passwordResetService;
     }
 
     @PostMapping("/register")
@@ -72,4 +75,19 @@ public class AuthController {
                 .header(HttpHeaders.SET_COOKIE, cookie.toString())
                 .build();
     }
+
+    @PostMapping("/password-reset/request")
+    public ResponseEntity<Void> requestPasswordReset(@Valid @RequestBody PasswordResetRequestDTO request){
+        passwordResetService.requestReset(request.email());
+
+        return ResponseEntity.noContent().build();
+    }
+
+    @PostMapping("/password-reset/confirm")
+    public ResponseEntity<Void> confirmPasswordReset(@Valid @RequestBody PasswordResetConfirmRequestDTO request){
+        passwordResetService.confirmReset(request.rawToken(), request.newPassword());
+
+        return ResponseEntity.noContent().build();
+    }
+
 }
