@@ -80,7 +80,11 @@
 			<scope>runtime</scope>
 			<optional>true</optional>
 		</dependency>
-
+		<!-- MailSender -->
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-mail</artifactId>
+		</dependency>
             <!-- ===== Test =====
                  Each technology starter has a paired test starter in Spring Boot 4.
                  They bring spring-boot-starter-test transitively, so it is not declared here. -->

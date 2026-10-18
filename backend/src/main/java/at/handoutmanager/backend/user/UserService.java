@@ -75,6 +75,14 @@ public class UserService {
         return userRepository.save(user);
     }
 
+    public void resetPassword(Long id, String newPassword) {
+        User user = findUserById(id);
+
+        user.setPasswordHash(passwordEncoder.encode(newPassword));
+
+        userRepository.save(user);
+    }
+
     public void deleteCurrentUser(Long id, String rawPassword){
         User user = findUserById(id);
 
@@ -86,4 +94,6 @@ public class UserService {
         userRepository.delete(user);
         log.info("Account deleted for user {}", id);
     }
+
+
 }
