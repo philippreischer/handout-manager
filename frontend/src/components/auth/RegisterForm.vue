@@ -10,6 +10,7 @@ const authStore = useAuthStore()
 const email = ref('')
 const password = ref('')
 const userName = ref('')
+const showPassword = ref(false)
 const errorMessage = ref<string | null>(null)
 const isSubmitting = ref(false)
 
@@ -57,17 +58,24 @@ async function handleSubmit() {
       />
     </div>
 
-    <div>
+    <div class="relative">
       <label for="registerPassword" class="mb-1 block text-sm text-slate-400"> Password </label>
       <input
         id="registerPassword"
         v-model="password"
-        type="password"
+        :type="showPassword ? 'text' : 'password'"
         required
         minlength="8"
         autocomplete="new-password"
         class="w-full rounded-md border border-slate-600 bg-slate-900 px-3 py-2 text-slate-100 placeholder-slate-500 focus:border-emerald-500 focus:outline-none"
       />
+      <button
+            type="button"
+            class="absolute top-1/2 right-2 -translate-y-1/2 text-xs text-slate-400 hover:text-slate-200"
+            @click="showPassword = !showPassword"
+          >
+            {{ showPassword ? 'Hide' : 'Show' }}
+          </button>
       <p class="mt-1 text-xs text-slate-500">At least 8 characters.</p>
     </div>
 

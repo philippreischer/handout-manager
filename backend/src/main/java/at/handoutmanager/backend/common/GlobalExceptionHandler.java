@@ -1,6 +1,7 @@
 package at.handoutmanager.backend.common;
 
 import at.handoutmanager.backend.auth.InvalidCredentialsException;
+import at.handoutmanager.backend.auth.InvalidPasswordResetTokenException;
 import at.handoutmanager.backend.security.InvalidRefreshTokenException;
 import at.handoutmanager.backend.user.EmailAlreadyExistsException;
 import at.handoutmanager.backend.user.PasswordMismatchException;
@@ -110,6 +111,16 @@ public class GlobalExceptionHandler {
                 HttpStatus.FORBIDDEN,
                 "Current password is incorrect.");
         problem.setTitle("Forbidden");
+        return problem;
+    }
+
+    @ExceptionHandler(InvalidPasswordResetTokenException.class)
+    public ProblemDetail handleInvalidPasswordResetToken(InvalidPasswordResetTokenException e) {
+        log.warn("Invalid password reset token: {}", e.getMessage());
+
+        ProblemDetail problem = ProblemDetail.forStatus(HttpStatus.BAD_REQUEST);
+        problem.setTitle("Invalid reset link");
+        problem.setDetail("This link is no longer valid. Request a new one.");
         return problem;
     }
 

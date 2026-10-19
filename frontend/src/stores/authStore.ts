@@ -50,6 +50,14 @@ export const useAuthStore = defineStore('auth', () => {
     accessToken.value = null
   }
 
+  async function requestPasswordReset(email: string) {
+    await client.post('/api/auth/password-reset/request', { email })
+  }
+
+  async function confirmPasswordReset(token: string, newPassword: string) {
+    await client.post('/api/auth/password-reset/confirm', { rawToken: token, newPassword })
+  }
+
   return {
     accessToken,
     isAuthenticated,
@@ -59,5 +67,7 @@ export const useAuthStore = defineStore('auth', () => {
     restoreSession,
     setAccessToken,
     clearSession,
+    requestPasswordReset,
+    confirmPasswordReset
   }
 })
