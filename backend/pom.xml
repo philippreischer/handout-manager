@@ -141,8 +141,11 @@
 				<artifactId>maven-surefire-plugin</artifactId>
 				<configuration>
 					<environmentVariables>
-						<!-- Test-only secret: 32 bytes, Base64. Never used outside tests. -->
+						<!-- Test-only values. Never used outside tests; they only need to
+                             exist so placeholder resolution succeeds. -->
 						<JWT_SECRET>dGVzdC1vbmx5LXNlY3JldC1ub3QtZm9yLXByb2QtMzI=</JWT_SECRET>
+						<MAIL_USERNAME>test-only</MAIL_USERNAME>
+						<MAIL_PASSWORD>test-only</MAIL_PASSWORD>
 					</environmentVariables>
 				</configuration>
 			</plugin>
