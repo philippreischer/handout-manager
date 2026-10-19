@@ -4,6 +4,8 @@ import AuthView from '@/views/AuthView.vue'
 import HomeView from '@/views/HomeView.vue'
 import LoginForm from '@/components/auth/LoginForm.vue'
 import RegisterForm from '@/components/auth/RegisterForm.vue'
+import ForgotPasswordForm from '@/components/auth/ForgotPasswordForm.vue'
+import ResetPasswordForm from '@/components/auth/ResetPasswordForm.vue'
 
 // Tells TypeScript which meta fields exist, so a typo in a route
 // definition or in the guard below is a compile error.
@@ -34,6 +36,17 @@ const router = createRouter({
           name: 'register',
           component: RegisterForm,
           meta: { guestOnly: true },
+        },
+        {
+          path: 'forgot-password',
+          name: 'forgot-password',
+          component: ForgotPasswordForm,
+          meta: { guestOnly: true },
+        },
+        {
+          path: 'reset-password',
+          name: 'reset-password',
+          component: ResetPasswordForm,
         },
       ],
     },

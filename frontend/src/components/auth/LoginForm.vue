@@ -13,9 +13,9 @@ const password = ref('')
 const errorMessage = ref<string | null>(null)
 const isSubmitting = ref(false)
 
-// Set by the settings page after a successful deletion. The value can be a
-// string, an array or null depending on the URL, so compare strictly.
 const accountDeleted = computed(() => route.query.deleted === '1')
+
+const passwordWasReset = computed(() => route.query.reset === '1')
 
 async function handleSubmit() {
   errorMessage.value = null
@@ -38,6 +38,10 @@ async function handleSubmit() {
 
     <p v-if="accountDeleted" class="text-sm text-emerald-400">
       Your account has been deleted.
+    </p>
+
+    <p v-else-if="passwordWasReset" class="text-sm text-emerald-400">
+      Your password has been changed. Sign in with the new one.
     </p>
 
     <div>
@@ -75,6 +79,15 @@ async function handleSubmit() {
     >
       {{ isSubmitting ? 'Signing in…' : 'Sign in' }}
     </button>
+
+    <p class="text-center text-sm text-slate-400">
+      <RouterLink
+        :to="{ name: 'forgot-password' }"
+        class="text-emerald-400 hover:underline"
+      >
+        Forgot your password?
+      </RouterLink>
+    </p>
 
     <p class="text-center text-sm text-slate-400">
       No account yet?
