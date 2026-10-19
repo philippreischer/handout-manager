@@ -54,6 +54,9 @@ class AuthControllerTest {
     @MockitoBean
     private CorsProperties corsProperties;
 
+    @MockitoBean
+    private PasswordResetService passwordResetService;
+
     @BeforeEach
     void setUp() {
         // lenient: only the tests that actually build a cookie read this value.
@@ -218,4 +221,82 @@ class AuthControllerTest {
         verify(authService, never()).logout(any());
     }
 
+    // Password reset
+
+    @Test
+    void shouldReturn204_whenPasswordResetWasRequested() throws Exception {
+        mockMvc.perform(post("/api/auth/password-reset/request")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                            {
+                              "email": "max@mustermann.com"
+                            }
+                            """))
+                .andExpect(status().isNoContent());
+
+        verify(passwordResetService).requestReset("max@mustermann.com");
+    }
+
+    @Test
+    void shouldReturn400_whenEmailIsMalformed() throws Exception {
+        mockMvc.perform(post("/api/auth/password-reset/request")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                            {
+                              "email": "abc"
+                            }
+                            """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errors.email").value("Email must be a valid address"));
+
+        verify(passwordResetService, never()).requestReset(any());
+    }
+
+    @Test
+    void shouldReturn204_whenResetWasConfirmed() throws Exception {
+        mockMvc.perform(post("/api/auth/password-reset/confirm")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                            {
+                              "rawToken": "some-raw-token",
+                              "newPassword": "newpass1234"
+                            }
+                            """))
+                .andExpect(status().isNoContent());
+
+        verify(passwordResetService).confirmReset("some-raw-token", "newpass1234");
+    }
+
+    @Test
+    void shouldReturn400_whenResetTokenIsInvalid() throws Exception {
+        doThrow(new InvalidPasswordResetTokenException("Reset token has expired"))
+                .when(passwordResetService).confirmReset(any(), any());
+
+        mockMvc.perform(post("/api/auth/password-reset/confirm")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                            {
+                              "rawToken": "expired-token",
+                              "newPassword": "newpass1234"
+                            }
+                            """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.status").value(400))
+                .andExpect(jsonPath("$.detail").value("This link is no longer valid. Request a new one."));
+    }
+
+    @Test
+    void shouldReturn400_whenResetTokenIsMissing() throws Exception {
+        mockMvc.perform(post("/api/auth/password-reset/confirm")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                            {
+                              "newPassword": "newpass1234"
+                            }
+                            """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errors.rawToken").value("Token is required"));
+
+        verify(passwordResetService, never()).confirmReset(any(), any());
+    }
 }
