@@ -1,9 +1,10 @@
 {
   "info": {
-    "_postman_id": "c364ce4a-1c1b-49ca-ab59-b75ee1e95669",
+    "_postman_id": "9d5de86f-c0e0-4d72-81e5-55cec22dc30a",
     "name": "handout-manager",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
-    "_exporter_id": "53050603"
+    "_exporter_id": "53050603",
+    "_collection_link": "https://go.postman.co/collection/53050603-9d5de86f-c0e0-4d72-81e5-55cec22dc30a?source=collection_link"
   },
   "item": [
     {
@@ -120,6 +121,64 @@
                 "api",
                 "auth",
                 "logout"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Request password reset",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\r\n  \"email\": \"max@mustermann.com\"\r\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/password-reset/request",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "password-reset",
+                "request"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Confirm password reset",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\r\n  \"rawToken\": \"PASTE_FROM_MAILTRAP\",\r\n  \"newPassword\": \"newpass1234\"\r\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/password-reset/confirm",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "password-reset",
+                "confirm"
               ]
             }
           },
