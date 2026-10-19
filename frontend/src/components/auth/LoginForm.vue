@@ -10,6 +10,7 @@ const authStore = useAuthStore()
 
 const email = ref('')
 const password = ref('')
+const showPassword = ref(false)
 const errorMessage = ref<string | null>(null)
 const isSubmitting = ref(false)
 
@@ -58,16 +59,25 @@ async function handleSubmit() {
 
     <div>
       <label for="password" class="mb-1 block text-sm text-slate-400">Password</label>
-      <input
-        id="password"
-        v-model="password"
-        type="password"
-        required
-        autocomplete="current-password"
-        class="w-full rounded-md border border-slate-600 bg-slate-900 px-3 py-2 text-slate-100 placeholder-slate-500 focus:border-emerald-500 focus:outline-none"
-      />
+      <div class="relative">
+        <input
+          id="password"
+          v-model="password"
+          :type="showPassword ? 'text' : 'password'"
+          required
+          autocomplete="current-password"
+          class="w-full rounded-md border border-slate-600 bg-slate-900 px-3 py-2 text-slate-100 placeholder-slate-500 focus:border-emerald-500 focus:outline-none"
+        />
+      
+        <button
+          type="button"
+          class="absolute top-1/2 right-2 -translate-y-1/2 text-xs text-slate-400 hover:text-slate-200"
+          @click="showPassword = !showPassword"
+        >
+          {{ showPassword ? 'Hide' : 'Show' }}
+        </button>
+      </div>
     </div>
-
     <p v-if="errorMessage" class="text-sm text-red-400">
       {{ errorMessage }}
     </p>
