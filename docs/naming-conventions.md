@@ -1,6 +1,6 @@
 # handout-manager — Naming Conventions Cheatsheet
 
-**v0.6 · in Verwendung**
+**v0.8 · in Verwendung**
 
 Analog zum A11yForge-Cheatsheet. Generische Konventionen übernommen, Domänen-Glossar neu auf dieses Projekt gemünzt.
 
@@ -51,6 +51,8 @@ Merke: **Handout** und **Note** sind *Werte* von `ResourceType`, keine eigenen E
 | Konfigurationsklasse (Beans) | PascalCase + `Config` | `SecurityConfig` |
 | Fabrik für ein technisches Artefakt | PascalCase + `Factory` | `RefreshCookieFactory` |
 | Zustandsloser statischer Helfer | PascalCase + `Util` | `SecureTokenUtil` |
+| Ereignis | PascalCase + `Event`, Verb in der Vergangenheit | `PasswordResetRequestedEvent` |
+| Ereignis-Empfänger | PascalCase + `Listener` | `PasswordResetMailListener` |
 | Enum-Typ | PascalCase | `ResourceType`, `MembershipRole` |
 | Enum-Wert | UPPER_SNAKE | `GAME_MASTER` |
 | Methode | camelCase, Verb zuerst | `grantPermission()` |
@@ -79,6 +81,17 @@ Merke: **Handout** und **Note** sind *Werte* von `ResourceType`, keine eigenen E
   `CookieProperties` von `auth` nach `security` wanderte: Die Fabrik hängt davon ab, und läge
   die Konfiguration weiter in `auth`, zeigte die Abhängigkeit von der Mechanik zum
   Anwendungsfall — also gegen die dokumentierte Richtung.
+- **Ein Event heißt nach dem, was geschehen *ist*; ein Listener nach dem, was er damit *tut*.**
+  `PasswordResetRequestedEvent` stellt eine Tatsache fest — `SendPasswordResetMailEvent` wäre ein
+  Auftrag, bei dem der Absender die Aufgabe des Empfängers festlegt. Der Listener heißt
+  `PasswordResetMailListener` und nicht `PasswordResetRequestedListener`: Sonst ist beim zweiten
+  Zuhörer auf demselben Ereignis (Audit, Metrik) kein Name mehr frei. **Beide liegen im Package,
+  das das Ereignis veröffentlicht**, nicht bei der Infrastruktur, die der Listener aufruft —
+  sonst müsste Infrastruktur ein Ereignis aus einem Anwendungsfall importieren.
+- **Trägt ein `record` ein Geheimnis, braucht er ein eigenes `toString()`.** Die erzeugte
+  Fassung gibt *alle* Felder aus; eine einzige Debug-Zeile schreibt damit ein Token, das in der
+  Datenbank nur als Hash liegt, im Klartext ins Log. Gilt für alles, was ein Nachweis ist —
+  Tokens, Links mit Token, Passwörter. Eine E-Mail-Adresse ist keiner und darf drinbleiben.
 - **DTOs:** Suffix `Request` / `Response` **+ `DTO`** — `ProjectCreateRequestDTO`, `ResourceResponseDTO`, `LoginRequestDTO`, `LoginResponseDTO`.
   DTOs leben auf der **Controller-Ebene**, nicht im Service: Ein Service nimmt Parameter
   entgegen, damit seine Signatur nicht von der HTTP-API abhängt. Braucht ein Service ein
@@ -97,7 +110,7 @@ at.handoutmanager.backend
 ├── security       (Mechanik: JWT, SecurityConfig, Filter, RefreshToken, Cookie-Fabrik,
 │                   SecureTokenUtil)
 ├── email          (ausgehende Infrastruktur: EmailSender, EmailProperties)
-├── config         (app-weite Konfiguration, z. B. JPA Auditing)
+├── config         (app-weite Konfiguration, z. B. JPA Auditing, AsyncConfig)
 └── common         (geteilte Exceptions, Hilfen, GlobalExceptionHandler)
 ```
 
@@ -367,8 +380,20 @@ POST   /api/resources/{resourceId}/permissions
   Reset-Antrag wird die gespeicherte Entität *und* die versendete URL abgefangen; dass der Hash
   des Tokens aus der URL dem gespeicherten entspricht, zeigt, dass die beiden Hälften
   zusammengehören — ohne dass der Test das Token kennt.
-- **Secret für Tests über Surefire**, nicht über eine Test-`application.properties`: siehe
-  Planungsdatei, Abschnitt CI.
+- **Bei überladenen Methoden ist ein nacktes `any()` eine Falle.** `ApplicationEventPublisher`
+  hat `publishEvent(Object)` und `publishEvent(ApplicationEvent)`; bei `never().publishEvent(any())`
+  schließt Java den Typparameter auf die *spezifischere* Überladung — und unser Event ist kein
+  `ApplicationEvent`. Der Test prüft dann die Überladung, die der Code nie aufruft, und bleibt
+  grün, obwohl veröffentlicht wird. `verifyNoInteractions(mock)` umgeht das und sagt mehr aus.
+  Zu finden nur, indem man den Test einmal absichtlich bricht.
+- **Ein Test, der die Methode direkt aufruft, geht am Proxy vorbei.** Ein Listener-Test belegt
+  deshalb nur, *was* die Methode tut — nicht, dass `@Async` oder
+  `@TransactionalEventListener` greifen. Das kann erst ein Test mit vollem Kontext.
+- **Was der Produktionskonfiguration bewusst fehlt, bringt der Test selbst mit** — auf zwei
+  Wegen, je nach Herkunft des Werts. Umgebungsvariablen über die Surefire-Konfiguration, nicht
+  über eine Test-`application.properties`. Properties, die nur im Profil `local` stehen, über
+  `@SpringBootTest(properties = …)` an der Testklasse: Ein Test ohne aktives Profil sieht die
+  Profildatei nicht. Begründung und Diagnose: Planungsdatei, Abschnitt CI.
 
 ### Frontend-Tests — Werkzeuge
 
@@ -458,4 +483,4 @@ Zugehörigkeit: Layout, Navigation, `App.vue`, geteilte Formularbausteine.
 
 ---
 
-*handout-manager · Naming Conventions · v0.6*
+*handout-manager · Naming Conventions · v0.8*
