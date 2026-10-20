@@ -51,6 +51,10 @@ public class EmailSender {
     private void send(SimpleMailMessage message) {
         try {
             javaMailSender.send(message);
+            // Success is worth a line: without it a missing mail cannot be told apart
+            // from a mail that was never dispatched. Subject only - the recipient and
+            // the link stay out of the log, same rule as in the error case below.
+            log.info("Mail with subject '{}' sent", message.getSubject());
         } catch (MailException e) {
             log.error("Could not send mail with subject '{}'", message.getSubject(), e);
         }
