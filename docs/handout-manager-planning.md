@@ -1,12 +1,21 @@
 # handout-manager — Projektplanung
 
-**Stand: Auth-Grundlage im Backend fertig. Lernprojekt (Fullstack).**
+**Stand: MVP-Schritt 1 (Auth) vollständig — inklusive Benutzerverwaltung und Passwort-Reset, Backend und Frontend durchgestochen. CI läuft. Lernprojekt (Fullstack).**
 
-Umgesetzt: Spring-Boot-Projekt, PostgreSQL via docker-compose, Flyway V1-V6, alle Entities
-und Repositories, JPA-Auditing. Auth-Fundament: `JwtProperties` (typisiert, validiert),
-`JwtService` (Erzeugung/Validierung, 4 Unit-Tests), minimale `SecurityConfig`,
-Tabelle/Entity/Repository `refresh_token`.
-Als Nächstes: Branch `feature/user`, danach `feature/auth` (Endpunkte + JWT-Filter).
+Umgesetzt: Spring-Boot-Projekt, PostgreSQL via docker-compose, Flyway V1–V8, alle Entities und
+Repositories, JPA-Auditing. Auth-Strecke vollständig: Registrierung, Login, Refresh mit
+Rotation, Logout, JWT-Filter, einheitliches Fehlerformat (`ProblemDetail`), profilabhängige
+Cookie- und CORS-Konfiguration. Benutzerverwaltung: Profil lesen, Benutzername und Passwort
+ändern, Konto löschen — jeweils mit Passwortbestätigung. Passwort-Reset per E-Mail über
+Mailtrap, mit einmalig verwendbarem Token. 67 Backend-Tests auf Unit- und Web-Ebene.
+Frontend: Vue 3 + TypeScript + Tailwind, Pinia-Stores für Auth und User, Login- und
+Registrierungsformular, Einstellungsseite mit drei Abschnitten, „Passwort vergessen" und
+Einlöse-Seite, Router mit Guard in beide Richtungen, Request- und Response-Interceptor mit
+Refresh und Wiederholung, 9 Vitest-Tests.
+Im Browser nachgewiesen: CORS, HttpOnly-Cookie, SameSite, Rotation ohne Diebstahlwarnung,
+Passwortwechsel mit anschließend gültigem Refresh, vollständige Reset-Strecke über Mailtrap.
+GitHub Actions baut und testet Backend und Frontend bei jedem Pull Request.
+Als Nächstes: `refactor/async-mail`.
 
 Diese Datei bündelt den gesamten Planungsstand als Kontext für spätere Arbeitssitzungen. Ergänzend: `naming-conventions.md` (Namenskonventionen) und das ER-Diagramm (`.drawio`).
 
@@ -25,11 +34,14 @@ Ein Hilfstool fürs Pen-&-Paper-Spielen: Ein Spielleiter (Game Master) legt ein 
 
 ## 2. Tech-Stack
 
-- **Frontend:** Vue.js 3, TypeScript, Tailwind
-- **Backend:** Java 25, Spring Boot 4.1, Spring Security, JWT (Bibliothek: **jjwt** 0.13.0 - drei Artefakte: `jjwt-api` compile, `jjwt-impl` und `jjwt-jackson` runtime)
-- **Datenbank:** PostgreSQL
+- **Frontend:** Vue.js 3, TypeScript, Tailwind 4 (via `@tailwindcss/vite`), Pinia, Vue Router, Axios, Vitest, `@vue/test-utils`
+- **Backend:** Java 25, Spring Boot 4.1, Spring Security, JWT (Bibliothek: **jjwt** 0.13.0 - drei Artefakte: `jjwt-api` compile, `jjwt-impl` und `jjwt-jackson` runtime), `spring-boot-starter-mail`
+- **Datenbank:** PostgreSQL 18
 - **Migrationen:** Flyway
+- **E-Mail:** SMTP über `JavaMailSender`; in der Entwicklung Mailtrap-Sandbox
 - **Container:** Docker / docker-compose
+- **CI:** GitHub Actions (zwei parallele Jobs, Backend und Frontend)
+- **Manuelles Testen:** Postman-Collection `handout-manager`, Umgebung `local` mit `baseUrl`
 
 ---
 
@@ -54,6 +66,7 @@ Ein Hilfstool fürs Pen-&-Paper-Spielen: Ein Spielleiter (Game Master) legt ein 
 
 - **MembershipRole:** `GAME_MASTER`, `PLAYER` (Platz für spätere `UserRole` am User für System-/Admin-Rollen).
 - **ResourceType:** `NOTE`, `HANDOUT`, `FILE`.
+- **RevocationReason:** `ROTATED`, `LOGOUT`, `PASSWORD_CHANGED` — warum ein Refresh-Token entwertet wurde (siehe Abschnitt 4, `refresh_token`).
 
 Speicherung: UPPER_SNAKE als Text in der DB via `@Enumerated(EnumType.STRING)`.
 
@@ -126,6 +139,7 @@ Zusätzlich: **UNIQUE (user_id, resource_id)** — ein User–Resource-Paar nur 
 > Sechste Tabelle (Flyway **V6**), ergibt sich aus der Entscheidung für ein *statefules*
 > Refresh-Token (siehe Abschnitt 8, „Token-Modell"). Liegt im Package `security`, nicht in
 > der Domäne — ein Refresh-Token ist Auth-Mechanik, kein fachliches Objekt.
+> `revoked_reason` kam mit **V7** dazu.
 
 | Java-Variable | Java-Typ | Spalte | DB-Typ | Constraints |
 |---|---|---|---|---|
@@ -135,22 +149,74 @@ Zusätzlich: **UNIQUE (user_id, resource_id)** — ein User–Resource-Paar nur 
 | createdAt | Instant | created_at | TIMESTAMP WITH TIME ZONE | NOT NULL DEFAULT now() |
 | expiresAt | Instant | expires_at | TIMESTAMP WITH TIME ZONE | NOT NULL |
 | revokedAt | Instant | revoked_at | TIMESTAMP WITH TIME ZONE | (nullable) |
+| revokedReason | RevocationReason | revoked_reason | VARCHAR(30) | (nullable) |
 
 Zusätzlich: Index auf `user_id` (für „auf allen Geräten abmelden"). **Kein** zusätzlicher
 Index auf `token_hash` — der UNIQUE-Constraint legt in PostgreSQL bereits einen an.
+Dazu **`ck_refresh_token_revoked`**: `(revoked_at IS NULL) = (revoked_reason IS NULL)` — die
+beiden Felder sind nur gemeinsam gesetzt oder gemeinsam leer.
 
 Entscheidungen zu dieser Tabelle:
 
 - **`revoked_at` als Zeitstempel statt Boolean**, und **markieren statt löschen**: Wird ein
   bereits benutztes Refresh-Token erneut vorgelegt, ist das ein starkes Signal für Diebstahl.
-  Beim Löschen wäre nur „unbekanntes Token" sichtbar, ohne Unterscheidung.
+  Beim Löschen wäre nur „unbekanntes Token" sichtbar, ohne Unterscheidung. *Praktisch bestätigt:*
+  Der Logversuch mit einem rotierten Token liefert „possible token theft" statt „not found".
+- **`revoked_reason` (V7)** unterscheidet, *warum* entwertet wurde. Anlass war ein Fehlalarm:
+  Nach der Umstellung des Passwortwechsels auf „alle Tokens widerrufen" schlug bei jedem
+  Passwortwechsel die Diebstahlwarnung an, weil das Cookie des aktuellen Geräts danach
+  zwangsläufig auf ein widerrufenes Token zeigt. Jetzt warnt der Log nur bei `ROTATED` —
+  dem einzigen Fall, in dem ein erneut vorgelegtes Token tatsächlich verdächtig ist. Bei
+  `PASSWORD_CHANGED` und `LOGOUT` ist die Ablehnung erwartet.
+  *Migrationsreihenfolge:* Spalte anlegen, bestehende widerrufene Zeilen auf `'ROTATED'`
+  setzen, **dann** den CHECK ergänzen — andernfalls scheitert die Migration an den Altdaten.
 - **`VARCHAR(64)`** entspricht einem hex-kodierten SHA-256-Hash fester Länge.
-- **`ON DELETE CASCADE`**: Tokens haben ohne ihren Benutzer keine Bedeutung.
+- **`ON DELETE CASCADE`**: Tokens haben ohne ihren Benutzer keine Bedeutung. Die Entities
+  halten nur ein `Long userId` ohne `@ManyToOne` — das Löschen erledigt deshalb PostgreSQL,
+  nicht Hibernate. *Praktisch nachgewiesen* beim Löschen eines Kontos: Die Token-Zeilen
+  verschwinden mit.
 - **Kein `Auditable`**: Die Basisklasse bringt ein `NOT NULL`-`updated_at` mit, das diese
   Tabelle nicht hat und nicht braucht (der Widerrufszeitpunkt steht in `revoked_at`).
   Stattdessen direkt `@EntityListeners(AuditingEntityListener.class)` + `@CreatedDate`.
   Gleiche Überlegung wie bei `permission`.
-- **Entity unveränderlich bis auf `revoked_at`**: nur dieses eine Feld hat einen Setter.
+- **Entity unveränderlich bis auf den Widerruf**: Statt eines Setters je Feld gibt es
+  `revoke(Instant, RevocationReason)` — die beiden Felder gehören zusammen, und eine Methode,
+  die sie gemeinsam setzt, kann nicht die Hälfte vergessen. Das spiegelt den CHECK-Constraint
+  im Code.
+
+### password_reset_token
+
+> Siebte Tabelle (Flyway **V8**). Liegt im Package `auth`, **nicht** in `security`: Sie kommt
+> in genau einem Anwendungsfall vor, und kein Filter und keine Sicherheitskette fasst sie an.
+> Dass sie dem `refresh_token` äußerlich gleicht — Hash, Ablauf, Markieren statt Löschen —, ist
+> Ähnlichkeit in der Technik, nicht in der Zuständigkeit.
+
+| Java-Variable | Java-Typ | Spalte | DB-Typ | Constraints |
+|---|---|---|---|---|
+| id | Long | id | BIGINT | GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY |
+| userId | Long | user_id | BIGINT | NOT NULL, FK → user_account(id) ON DELETE CASCADE |
+| tokenHash | String | token_hash | VARCHAR(64) | UNIQUE NOT NULL |
+| createdAt | Instant | created_at | TIMESTAMP WITH TIME ZONE | NOT NULL DEFAULT now() |
+| expiresAt | Instant | expires_at | TIMESTAMP WITH TIME ZONE | NOT NULL |
+| usedAt | Instant | used_at | TIMESTAMP WITH TIME ZONE | (nullable) |
+
+Zusätzlich: Index auf `user_id` — gebraucht, um beim neuen Antrag die offenen Tokens des
+Benutzers zu finden.
+
+Entscheidungen zu dieser Tabelle:
+
+- **Kein `reason`-Feld wie beim Refresh-Token**, weil es hier nur einen Weg gibt, unbrauchbar zu
+  werden. *Bekannte Ungenauigkeit daraus:* `used_at` trägt damit zwei Bedeutungen — „eingelöst"
+  und „durch einen neuen Antrag ersetzt". Für die Mechanik gleichwertig, im Log nachher nicht
+  unterscheidbar. Bewusst akzeptiert; die saubere Variante wäre eine `reason`-Spalte.
+- **`used_at` darf *nicht* `updatable = false` tragen.** Es ist das einzige Feld der Entity, das
+  sich ändern darf. *Erst eingebaut, dann gefunden:* Mit `updatable = false` nimmt Hibernate die
+  Spalte aus jedem UPDATE heraus — ohne Fehler, ohne Warnung. Der Reset-Link wäre beliebig oft
+  einlösbar geblieben, eine halbe Stunde lang.
+- **Nur `markUsed(Instant)` statt eines Setters.** Ein Setter ließe auch `null` zu, also das
+  Zurücksetzen auf „unbenutzt".
+- **30 Minuten Laufzeit**, konfigurierbar. Solange der Link gilt, ist er so gut wie das
+  Passwort.
 
 ---
 
@@ -161,6 +227,17 @@ Regeln, die die DB-Struktur allein nicht erzwingt und die im Service liegen:
 - **Permission nur an Projektmitglieder:** Eine Resource-Freigabe darf nur an einen User erfolgen, der Mitglied des zugehörigen Projekts ist (Resource → Project → Membership). Prüfung im Service, nicht per FK erzwingbar.
 - **content / file_path je nach Typ:** Bei `resourceType = NOTE`/`HANDOUT` (text) ist `content` gefüllt, `file_path` leer; bei `FILE` umgekehrt. Prüfung im Service (optional zusätzlich CHECK-Constraint).
 - **Zeitstempel via JPA Auditing:** `@CreatedDate` / `@LastModifiedDate` (mit `@EnableJpaAuditing` in `config/`, `AuditingEntityListener` an einer gemeinsamen `Auditable`-Basisklasse). DB-`DEFAULT now()` nur auf `created_at` als Sicherheitsnetz; auf `updated_at` bewusst kein Default.
+- **E-Mail-Normalisierung:** Beim Registrieren *und* beim Suchen wird die E-Mail getrimmt und
+  in Kleinbuchstaben umgewandelt (`Locale.ROOT` — ohne Angabe verhält sich `toLowerCase()` in
+  türkischer Locale anders). Nur an einer Stelle implementiert, damit gespeicherte und gesuchte
+  Form nicht auseinanderlaufen. Die Eindeutigkeitsprüfung per `existsByEmail` ist nicht
+  wasserdicht (Zeitfenster zwischen Prüfung und Insert) — die Absicherung ist der
+  UNIQUE-Constraint der Datenbank, die Prüfung liefert die verständliche Fehlermeldung.
+- **Jede Änderung am eigenen Konto verlangt das aktuelle Passwort** — Benutzername, Passwort
+  und Löschung gleichermaßen. Begründung in Abschnitt 8.
+- **Ein neuer Reset-Antrag entwertet die offenen Tokens des Benutzers.** Es ist immer nur der
+  neueste Link gültig; sonst lägen nach dreimaligem Klicken drei funktionierende Links im
+  Postfach.
 
 ---
 
@@ -168,7 +245,9 @@ Regeln, die die DB-Struktur allein nicht erzwingt und die im Service liegen:
 
 Kern-Durchstich: SL legt Projekt an → lädt Spieler ein → erstellt/lädt Resource hoch → gibt pro Spieler frei → Spieler sieht genau das Freigegebene.
 
-1. **Registrierung + Login** (Auth, JWT)
+1. **Registrierung + Login** (Auth, JWT) — *abgeschlossen, Backend und Frontend*,
+   inklusive Benutzerverwaltung (Profil, Benutzername, Passwort, Kontolöschung) und
+   Passwort-Reset per E-Mail
 2. **Projekt anlegen**
 3. **Spieler einladen / zu Projekt hinzufügen**
 4. **Resource erstellen (Text) und hochladen (Datei)**
@@ -190,9 +269,10 @@ Kern-Durchstich: SL legt Projekt an → lädt Spieler ein → erstellt/lädt Res
 
 ```
 handout-manager/
+├── .github/workflows/     (ci.yml)
 ├── backend/
 ├── frontend/
-├── docs/          (Planung, Naming-Conventions, ER-Diagramm)
+├── docs/          (Planung, Naming-Conventions, ER-Diagramm, Postman-Collection)
 ├── docker-compose.yml
 └── README.md
 ```
@@ -201,63 +281,123 @@ handout-manager/
 
 ```
 backend/src/main/java/at/handoutmanager/backend/
-├── user/
+├── auth/          (AuthController, DTOs, AuthService, PasswordResetService,
+│                   PasswordResetToken + Repository, PasswordResetProperties,
+│                   Exceptions)
+├── user/          (UserController, UserService, DTOs, PasswordMismatchException,
+│                   UserNotFoundException)
 ├── project/
 ├── membership/
 ├── resource/
 ├── permission/
-├── security/      (JWT, SecurityConfig, Filter)
+├── security/      (JwtService, JwtProperties, SecurityConfig, Filter, RefreshToken +
+│                   Service, RevocationReason, RefreshCookieFactory, SecureTokenUtil,
+│                   CookieProperties, CorsProperties, AuthenticationEntryPoint)
+├── email/         (EmailSender, EmailProperties)
 ├── config/        (app-weite Konfiguration, JPA Auditing)
-└── common/        (geteilte Exceptions, Hilfen)
+└── common/        (geteilte Exceptions, Hilfen, GlobalExceptionHandler, Auditable)
 ```
+
+**`auth` vs. `security`:** `auth` ist der **Anwendungsfall** — anmelden, registrieren, Token
+erneuern, abmelden, Passwort zurücksetzen. `security` ist die **Mechanik**, die das ermöglicht:
+Token bauen und prüfen, Requests filtern, Spring Security konfigurieren.
+
+**Die Abhängigkeitsrichtung ist Anwendungsfall → Mechanik, nie umgekehrt.** Daran entschied
+sich, dass `CookieProperties` von `auth` nach `security` wanderte: `RefreshCookieFactory` liegt
+in `security` und braucht die Konfiguration; läge sie in `auth`, zeigte der Pfeil in die
+falsche Richtung.
+
+**`email` als eigenes Package**, nicht in `auth`: Es ist ausgehende Infrastruktur, die mehrere
+Anwendungsfälle brauchen werden — Spielereinladungen kommen im MVP noch. Der Name ist `email`
+und nicht `mail`, weil Spring Boot selbst eine Klasse `MailProperties` mitbringt und zwei
+gleichnamige Klassen im Projekt eine Einladung zum falschen Import sind.
 
 ### Frontend (Vue 3 / TS)
 
 ```
 frontend/src/
-├── assets/
+├── assets/            (main.css mit Tailwind-Import)
+├── api/
+│   ├── httpClient.ts      (Axios-Instanz, baseURL + withCredentials)
+│   ├── interceptors.ts    (setupInterceptors(), aus main.ts aufgerufen)
+│   ├── errorMessage.ts    (ProblemDetail → Anzeigetext)
+│   └── __tests__/
 ├── components/
-├── views/
-├── router/
-├── stores/        (Pinia; Auth-Store zuerst)
-├── api/           (Axios-Instanz + JWT-Interceptor)
+│   ├── auth/          (LoginForm, RegisterForm, ForgotPasswordForm, ResetPasswordForm)
+│   ├── layout/        (AppNavbar)
+│   └── settings/      (UserNameSection, PasswordSection, DeleteAccountSection)
+├── views/             (AuthView als Rahmen, HomeView, SettingsView)
+├── router/            (Routen + Guard, RouteMeta-Augmentation)
+├── stores/            (authStore.ts, userStore.ts, __tests__/)
 ├── composables/
 ├── types/
-├── themes/        (Fantasy/Horror via CSS-Variablen-Tokens)
-├── App.vue
-└── main.ts
+├── themes/            (Fantasy/Horror via CSS-Variablen-Tokens)
+├── App.vue            (Navbar + RouterView)
+└── main.ts            (bootstrap(): Pinia → Interceptors → restoreSession → loadUser →
+                        Router → mount)
 ```
+
+**View gegen Komponente:** Eine View ist der Rahmen — Layout, Seitenstruktur, verschachtelter
+`RouterView`. Der Inhalt liegt in Komponenten. `AuthView.vue` hält die zentrierte Karte auf
+dunklem Grund, `LoginForm.vue` das Formular darin. Vorteil: Der Rahmen bleibt beim Wechsel
+zwischen Login und Registrierung eingehängt, nur der Inhalt tauscht. **Eine neue Auth-Seite
+braucht deshalb keine neue View** — die zwei Reset-Seiten sind reine Komponenten plus Route.
+
+**`SettingsView` ist derselbe Gedanke eine Stufe weiter:** Die View hält Überschrift, Breite und
+Reihenfolge, jeder der drei Abschnitte ist eine eigene Komponente. Die erste Fassung lag in
+*einer* Datei und brauchte dort fünfzehn Refs mit Präfixen (`userNameLoading`,
+`passwordLoading`, …). Nach der Aufteilung hält jede Datei einen Satz: `password`,
+`isSubmitting`, `errorMessage`.
 
 ---
 
 ## 8. Design-Entscheidungen & Begründungen
+
+### Domäne & Datenmodell
 
 - **Resource konsolidiert** Notiz/Handout/Datei in *einer* Entität; `resourceType` unterscheidet, `content` (Text) und `file_path` (Dateiverweis) tragen die zwei Datenformen. Bewusste Vereinfachung.
 - **Whitelist-Berechtigung:** Zugriff standardmäßig verboten, per `permission`-Zeile explizit erteilt. Existenz der Zeile = Erlaubnis (kein Boolean-Flag).
 - **Surrogatschlüssel überall**, auch auf den Join-Tabellen (`membership`, `permission`): einheitliche `Long id` statt zusammengesetztem PK. Eindeutigkeit über UNIQUE-Constraint. Gründe: Einheitlichkeit über alle Entities, keine JPA-Composite-Key-Komplexität (`equals`/`hashCode`-Fallen), gute Referenzierbarkeit.
 - **MembershipRole** an der Membership (Projekt-Rolle), getrennt von einer späteren `UserRole` (System-/Admin-Rolle) am User.
 - **created_by** an der Resource entkoppelt Autorschaft von der aktuellen SL-Membership.
-- **Feature-basierte Backend-Struktur** (DDD-nah); `security` als Querschnitts-Package (technische Auth-Mechanik ≠ User-Domäne).
-- **Monorepo** für Solo-Lernprojekt + gemeinsames docker-compose.
 - **Tabellen Singular** (Hibernate/JPA mappt 1:1 auf Entitäten).
-- **Token-Modell (Auth, MVP-Schritt 1):** bewusst *vor* Beginn der Umsetzung festgelegt, weil
-  eine spätere Nachrüstung Frontend und CORS-/Cookie-Konfiguration strukturell aufreißen würde.
-  - **Access-Token:** JWT, kurzlebig (Default 15m), Übergabe im Response-Body; das Frontend
-    hält es im Speicher, nicht im LocalStorage.
-  - **Refresh-Token:** langlebig (Default 14d), **stateful** in eigener Tabelle. Begründung:
-    Nur mit serverseitigem Zustand ist ein Logout wirksam („alle Geräte abmelden", Sperren mit
-    sofortiger Wirkung). Rein signaturbasierte Tokens sind bis zum Ablauf nicht widerrufbar.
-  - **Rotation:** Beim Refresh wird das alte Token entwertet und ein neues ausgestellt.
-    Begrenzt das Zeitfenster eines gestohlenen Tokens. Setzt Stateful voraus.
-  - **Transport:** **HttpOnly-Cookie**. Schützt gegen Auslesen per XSS. *Ehrliche
-    Einschränkung:* schützt nicht gegen Missbrauch — wer Skripte in der Seite ausführt, kann
-    einen Refresh-Request absetzen, das Cookie fährt automatisch mit.
-  - **Speicherung:** nur als **Hash**, nie im Klartext (Schutz bei DB-Dump/Backup/Injection).
-    Bewusst **kein BCrypt**, sondern ein schneller, deterministischer Hash (SHA-256): Das Token
-    ist ein Zufallswert mit hoher Entropie, ein langsamer Hash bringt hier nichts und
-    verhindert durch das Pro-Zeile-Salting die Suche per `WHERE token_hash = ?`.
-    Für **Passwörter** gilt das Gegenteil — dort ist BCrypt richtig, weil Passwörter erratbar
-    sind und der langsame Hash genau das erschwert.
+- **Monorepo** für Solo-Lernprojekt + gemeinsames docker-compose.
+- **Feature-basierte Backend-Struktur** (DDD-nah); `security` als Querschnitts-Package (technische Auth-Mechanik ≠ User-Domäne), `auth` als eigener Anwendungsfall daneben.
+
+### Token-Modell (Auth, MVP-Schritt 1)
+
+Bewusst *vor* Beginn der Umsetzung festgelegt, weil eine spätere Nachrüstung Frontend und
+CORS-/Cookie-Konfiguration strukturell aufreißen würde.
+
+- **Access-Token:** JWT, kurzlebig (Default 15m), Übergabe im Response-Body; das Frontend
+  hält es im Speicher, nicht im LocalStorage.
+- **Refresh-Token:** langlebig (Default 14d), **stateful** in eigener Tabelle. Begründung:
+  Nur mit serverseitigem Zustand ist ein Logout wirksam („alle Geräte abmelden", Sperren mit
+  sofortiger Wirkung). Rein signaturbasierte Tokens sind bis zum Ablauf nicht widerrufbar.
+- **Rotation:** Beim Refresh wird das alte Token entwertet und ein neues ausgestellt.
+  Begrenzt das Zeitfenster eines gestohlenen Tokens. Setzt Stateful voraus.
+  **Reihenfolge:** erst validieren, dann entwerten, dann ausstellen — im Zweifel lieber ein
+  ausgesperrter Benutzer als zwei gültige Tokens. Abgesichert durch `@Transactional`:
+  ganz oder gar nicht.
+- **Transport:** **HttpOnly-Cookie**, Pfad `/api/auth` (reist nicht zu jedem Endpunkt mit).
+  Schützt gegen Auslesen per XSS. *Ehrliche Einschränkung:* schützt nicht gegen Missbrauch —
+  wer Skripte in der Seite ausführt, kann einen Refresh-Request absetzen, das Cookie fährt
+  automatisch mit.
+- **Speicherung:** nur als **Hash**, nie im Klartext (Schutz bei DB-Dump/Backup/Injection).
+  Erzeugt mit `SecureRandom` (32 Byte, Base64URL), gehasht mit SHA-256 (hex, 64 Zeichen).
+  Bewusst **kein BCrypt**: Das Token ist ein Zufallswert mit hoher Entropie, ein langsamer Hash
+  bringt hier nichts und verhindert durch das Pro-Zeile-Salting die Suche per
+  `WHERE token_hash = ?`. Für **Passwörter** gilt das Gegenteil — dort ist BCrypt richtig, weil
+  Passwörter erratbar sind und der langsame Hash genau das erschwert.
+- **Erzeugen und Hashen liegen in `SecureTokenUtil`** (`security`), seit der Reset-Token
+  denselben Weg braucht. Herausgezogen statt kopiert, weil eine Abweichung bei Krypto lange
+  unentdeckt bliebe. Bewusst ein **statischer Helfer** und keine Bean: So wird er in Tests nicht
+  gemockt, und die bestehenden Aussagen („Hash hat 64 Zeichen", „Hash ≠ Rohtoken") bleiben echte
+  Aussagen.
+- **Grenze des Modells:** Ein Access-Token ist nicht widerrufbar. Nach einem Logout gilt es bis
+  zu 15 Minuten weiter — das ist die bewusste Obergrenze des Schadensfensters und der Grund für
+  die kurze Laufzeit. Dasselbe gilt nach einem Passwortwechsel oder Reset: Die Refresh-Tokens
+  sind sofort entwertet, ein bereits ausgegebenes Access-Token läuft bis zu seinem `exp` weiter.
 - **Token-Inhalt: nur die Identität.** Das Subject ist die **Benutzer-ID** (nicht die E-Mail:
   stabil, und ein JWT ist signiert, nicht verschlüsselt — die E-Mail wäre unnötig preisgegeben).
   **Keine Rollen-Claims.** Zwei Gründe: Ein JWT ist eine Momentaufnahme, eine entzogene Rolle
@@ -265,23 +405,293 @@ frontend/src/
   `Membership` und ist damit projektbezogen — es *gibt* keine Rolle, die man ins Token
   schreiben könnte. Folge: Der JWT-Filter **authentifiziert** nur; die **Autorisierung**
   passiert projektbezogen in der Anwendungsschicht.
-- **Konfiguration & Secret-Handling:** Kein Geheimnis im Repository. Das Signatur-Secret kommt
-  ausschließlich aus einer Umgebungsvariable — Platzhalter **ohne Default** (`${JWT_SECRET}`).
-  Fehlt sie, startet die Anwendung nicht (**Fail-Fast**). Ein lauter Startfehler ist besser als
-  eine Anwendung, die still mit einem eingecheckten Secret nachbaubare Tokens signiert. Die
-  Anwendung fragt den Wert nur ab; woher er kommt (lokal Run Configuration, produktiv Secret
-  Manager), ist ihr unbekannt. Gültigkeitsdauern sind kein Geheimnis und haben Defaults.
-- **Typisierte Konfigurationsklasse `JwtProperties`** statt feldweiser Injektion: eine Stelle,
-  an der steht was konfigurierbar ist, automatische Umwandlung nach `Duration`, und ein Ort für
-  die Validierung. Das Secret wird per `@Size(min = 44)` geprüft — 44 Base64-Zeichen ergeben
-  die von HS256 geforderten 32 Byte. (Näherung: `@Size` zählt Zeichen, nicht dekodierte Bytes;
-  `Keys.hmacShaKeyFor` fängt den Rest ab. Der Gewinn ist die klarere Fehlermeldung.)
-- **Auth-Endpunkte unter `/api/auth/**`** — bewusst als Wildcard freigegeben, weil dort per
-  Definition unauthentifizierte Aufrufe ankommen.
+- **Cookie-Bau an einer Stelle.** `RefreshCookieFactory` in `security` kennt `create(rawToken)`
+  und `expired()`; Login, Refresh, Logout und Passwortwechsel rufen nur noch sie auf. Vorher
+  stand der Cookie-Aufbau in jedem Endpunkt — und ein `.toString()` auf einem String, das einen
+  `Set-Cookie`-Header ohne Attribute erzeugte, fiel genau deshalb lange nicht auf.
+
+### Auth-Verhalten
+
+- **Keine Benutzer-Enumeration:** Unbekannte E-Mail und falsches Passwort führen zu *derselben*
+  `InvalidCredentialsException` mit *derselben* Meldung und demselben Status (401). Auch die
+  `EmailAlreadyExistsException` gibt nach außen nur „Registration failed." zurück, ohne die
+  betroffene Adresse. Die Unterscheidung steht ausschließlich im Log. Maschinell abgesichert
+  durch Tests auf beiden Ebenen.
+  *Bekannte Restlücke:* Bei unbekannter E-Mail springt der Login sofort raus, bei falschem
+  Passwort läuft erst BCrypt durch — ein Zeitunterschied, der theoretisch messbar ist. Für
+  dieses Projekt akzeptiert; die übliche Gegenmaßnahme wäre ein Vergleich gegen einen
+  Dummy-Hash auch im Nichtgefunden-Fall.
+- **Logout ist nachsichtig:** Ein Logout mit ungültigem oder bereits widerrufenem Token liefert
+  trotzdem 204 und löscht das Cookie. Begründung: Das Ziel — die Sitzung ist beendet — ist
+  bereits erreicht. Ein Fehler würde dem Client suggerieren, er sei noch angemeldet. Nebeneffekt:
+  ein einheitliches 204 verrät nicht, ob das Token noch gültig war. Der `catch` fängt gezielt
+  `InvalidRefreshTokenException`, nicht `Exception` — ein Datenbankfehler soll nicht
+  stillschweigend als Erfolg durchgehen.
+- **Der JWT-Filter antwortet nicht selbst.** Bei fehlendem oder ungültigem Token setzt er keine
+  Identität und reicht die Anfrage weiter; ob das reicht, entscheidet die Autorisierung. Gründe:
+  Der Filter läuft vor der Zuordnung zum Endpunkt und kennt das Ziel nicht (ein abgelaufenes
+  Token an `/api/auth/login` darf kein 401 auslösen), und die Zuständigkeiten bleiben getrennt —
+  „wer bist du?" ist eine andere Frage als „darfst du das?". *Nebeneffekt, der sich beim Testen
+  auszahlt:* Die Postman-Collection setzt den Bearer-Token für die ganze Collection, also auch
+  bei Login und Registrierung — und das ist harmlos, weil der Filter ein unpassendes Token
+  ignoriert statt abzulehnen.
+- **`AuthenticationEntryPoint` für 401 statt 403:** Ohne konfigurierten Anmeldemechanismus
+  antwortet Spring Security bei fehlender Authentifizierung mit 403. Für ein Frontend ist das
+  irreführend — 401 heißt „hol dir ein neues Token", 403 heißt „das darfst du nicht". Ein
+  eigener Entry Point liefert 401 im `ProblemDetail`-Format.
+
+### Benutzerverwaltung (`feature/user-management`)
+
+- **Vier Endpunkte unter `/api/users`:** `GET /me`, `PATCH /me/username`, `PATCH /me/password`,
+  `DELETE /me`. Die Begründung für `/me` und für die feldbezogenen Unterpfade steht im
+  Cheatsheet.
+- **Jede Änderung verlangt das aktuelle Passwort**, auch die Umbenennung. Einheitlichkeit war
+  das Argument: Eine Oberfläche, in der zwei von drei Formularen ein Passwort wollen und eines
+  nicht, erklärt sich schlechter als eine, in der die Regel durchgängig gilt. Der Preis ist ein
+  Feld mehr bei einer harmlosen Änderung.
+- **`PasswordMismatchException` → 403, nicht 401.** Das ist keine Stilfrage: Der
+  Response-Interceptor im Frontend startet bei 401 einen Refresh. Ein falsch eingetipptes
+  aktuelles Passwort mit 401 zu beantworten würde also einen Refresh anstoßen, ein
+  Refresh-Token verbrauchen und die eigentliche Fehlermeldung verschlucken.
+- **Passwortwechsel widerruft *alle* Refresh-Tokens und stellt ein neues Paar aus**
+  („Variante B"). Wer sein Passwort ändert, will in der Regel genau das — andere Geräte
+  hinauswerfen.
+  **Reihenfolge ist Teil der Entscheidung:** erst Passwort prüfen und ändern, dann widerrufen,
+  dann ausstellen. Andernfalls würde ein Tippfehler im aktuellen Passwort den Benutzer von allen
+  Geräten abmelden. Abgesichert durch `@Transactional` und im Test durch `InOrder`.
+- **Die Orchestrierung liegt im `AuthService`, der Endpunkt im `UserController`.** Der Wechsel
+  ist fachlich eine Kontoänderung, mechanisch eine Token-Operation.
+- **Löschung per `DELETE /api/users/me` mit dem Passwort im Body.** Ein Body an einem DELETE ist
+  unübersichtlich, aber die Alternativen sind schlechter: ein Passwort im Query-String landet in
+  jedem Zugriffslog, und ein `POST /me/delete` wäre ein Verb in der URL.
+  *Axios-Eigenheit dazu:* `client.delete(url, body)` funktioniert nicht — das zweite Argument
+  ist die Config. Der Body muss als `{ data: { password } }` hinein.
+- **Das Löschen räumt per Datenbank auf.** Die Entities halten nur `Long userId` ohne
+  `@ManyToOne`, also kaskadiert PostgreSQL über `ON DELETE CASCADE`, nicht Hibernate.
+- **Kein zweiter Bestätigungsschritt beim Löschen.** Das Passwort *ist* die Bestätigung; wer es
+  eintippt, tut es nicht versehentlich.
+
+### Passwort-Reset (`feature/password-reset`)
+
+- **Zwei Endpunkte unter einem gemeinsamen Pfad:** `POST /api/auth/password-reset/request` und
+  `/confirm`. Begründung für diese Form im Cheatsheet — kurz: Die Pfade benennen weiterhin
+  Dinge statt Verben, und man sieht an der URL, dass die zwei zusammengehören.
+- **Das Anfordern antwortet *immer* mit 204**, auch bei unbekannter Adresse. Damit ist der
+  Endpunkt kein Werkzeug, um Konten zu finden. Daraus folgen drei Dinge, die zusammengehören:
+  Der Service kehrt bei unbekannter E-Mail still zurück (kein Fehler), der Versand schluckt
+  seine Fehler (sonst käme bei existierenden Konten eine 500 und bei unbekannten eine 204), und
+  die Meldung im Frontend bleibt genauso vage — „falls ein Konto existiert …". Jede der drei
+  Stellen allein würde die Vorkehrung aufheben.
+- **Das Einlösen gibt kein Token-Paar zurück**, sondern 204 und schickt über `/login?reset=1`
+  auf die Login-Seite. Anders als beim Passwortwechsel in den Einstellungen ist hier niemand
+  angemeldet, und der Nachweis ist ein Link aus einer E-Mail: Würde das Einlösen direkt
+  anmelden, wäre der Besitz dieses Links eine vollständige Sitzung — und E-Mail-Links landen in
+  Verläufen, Vorschauen und Weiterleitungen. Dieselbe Form wie Registrierung und Kontolöschung.
+- **Drei Ablehnungsgründe, eine Exception.** Unbekannt, verbraucht, abgelaufen werfen alle
+  `InvalidPasswordResetTokenException` mit unterschiedlichen Meldungen fürs Log; nach außen gibt
+  es einen Text, der nichts unterscheidet (400).
+- **Beim Einlösen: Passwort setzen, Token verbrauchen, alle Refresh-Tokens widerrufen** — in
+  dieser Reihenfolge, in einer Transaktion. Es kann also nicht passieren, dass das Passwort neu
+  ist und der Link weiter funktioniert.
+- **`UserService.resetPassword(userId, newPassword)` ist die einzige Methode im System, die ein
+  Passwort ohne Nachweis überschreibt.** Deshalb heißt sie anders als `changePassword` und nicht
+  bloß „dasselbe mit weniger Parametern": Wer sie im Code sieht, soll stolpern und nachsehen,
+  wer sie aufruft.
+- **Der Versand ist synchron — als bewusste Zwischenstufe.** Die Entscheidung für `@Async` ist
+  gefallen (siehe `refactor/async-mail`), aber getrennt umgesetzt, weil in dieser Branch der
+  E-Mail-Versand *an sich* neu war: SMTP-Konfiguration, Absenderadresse, Template, Mailtrap, der
+  Link mit dem Token. Kommt nichts an, will man nicht gleichzeitig überlegen, ob es an der
+  Konfiguration liegt oder daran, dass ein `@Async`-Selbstaufruf stillschweigend synchron läuft.
+- **Fünf Vorkehrungen, damit der Umbau auf `@Async` klein bleibt:** Der Versand liegt in einer
+  **eigenen Bean**; sie bekommt **nur einfache Werte, keine Entities** (im Hintergrund-Thread
+  gibt es keine Hibernate-Session, eine detachte Entität würde dort mit
+  `LazyInitializationException` scheitern — in einem Thread, dessen Fehler nur im Log landen);
+  der Aufruf steht **als letzte Zeile** der Service-Methode; der Link entsteht aus
+  **Konfiguration**; und der Fehler wird **dort gefangen, wo er entsteht**. Damit ist der Umbau
+  zwei Annotationen und ein Event.
+- **Die zwei Fallen beim späteren Umbau** sind notiert, damit sie nicht neu entdeckt werden
+  müssen: `@Async` wirkt über einen Proxy, ein Selbstaufruf innerhalb derselben Klasse läuft
+  stumm synchron weiter; und der Hintergrund-Thread läuft außerhalb der Transaktion, die Mail
+  kann also vor dem Commit draußen sein — ein schneller Klick trifft dann ein Token, das in der
+  Datenbank noch nicht existiert. Lösung: Auslösen über ein
+  `@TransactionalEventListener(phase = AFTER_COMMIT)`.
+- **Anbieterwechsel ist Konfiguration, keine Codeänderung** — solange der Versand über SMTP
+  läuft und kein Anbieter-SDK dazukommt. Mailtrap *ist* ein SMTP-Server. Was beim Wechsel
+  wirklich Arbeit macht, ist nicht der Code: Ein echter Anbieter akzeptiert nur eine verifizierte
+  Domain, es braucht also SPF-, DKIM- und DMARC-Einträge im DNS. Deshalb steht die
+  Absenderadresse von Anfang an in der Konfiguration.
+- **SMTP-Timeouts explizit gesetzt.** Ohne Angabe wartet JavaMail notfalls unbegrenzt — und
+  solange synchron gesendet wird, wartet der Request mit.
+
+### Frontend-Auth (MVP-Schritt 1)
+
+- **Access-Token nur im Pinia-Store, nicht im LocalStorage.** Ein Token im LocalStorage ist per
+  JavaScript auslesbar und überlebt den Tab — beides genau das, was das kurzlebige Token
+  vermeiden soll. Preis: Nach jedem Neuladen ist es weg und muss über den Refresh neu geholt
+  werden.
+- **Das Refresh-Token taucht im Frontend nirgends auf.** Es liegt in einem HttpOnly-Cookie und
+  ist für JavaScript *unsichtbar* — der Store hat deshalb kein `refreshToken`-Feld und kann
+  keines haben. Der Browser schickt es bei jedem Aufruf unter `/api/auth` automatisch mit,
+  vorausgesetzt der Axios-Client läuft mit `withCredentials: true`.
+- **`restoreSession()` läuft beim Start, und zwar vor `app.use(router)`.** Vue Router stößt die
+  erste Navigation bereits im `install()` an, nicht erst beim `mount()`. Läuft der Refresh noch,
+  während der Guard entscheidet, sieht dieser kein Token und schickt jeden Seiten-Neuaufbau auf
+  `/login`. `router.isReady()` hilft dagegen nicht — es wartet auf das *Ende* der ersten
+  Navigation, nicht auf ihren Start. *(Praktisch aufgetreten und behoben.)*
+- **Guard wirkt in beide Richtungen:** `meta.requiresAuth` hält Unangemeldete von geschützten
+  Routen weg, `meta.guestOnly` schickt Angemeldete von Login und Registrierung nach `/home`.
+  **Aber nicht überall:** Die Einlöse-Seite des Resets trägt bewusst kein `guestOnly`, weil ein
+  noch angemeldeter Benutzer sonst genau dann weggeschickt würde, wenn er den Link aus der Mail
+  öffnet.
+- **Interceptors in eigener Datei.** Der Auth-Store importiert den Axios-Client; ein Interceptor
+  im Client müsste den Store importieren. `api/interceptors.ts` kennt beide und wird einmal aus
+  `main.ts` aufgerufen — das löst den Zirkelimport auf, statt sich darauf zu verlassen, dass er
+  zur Laufzeit gutgeht.
+- **Refresh bei 401 mit Wiederholung, und eine Sperre gegen Parallelität.** Laufen mehrere
+  Requests gleichzeitig in ein 401, darf nur *einer* den Refresh auslösen: Das Backend rotiert,
+  der zweite Refresh würde ein bereits entwertetes Token vorlegen und den Benutzer aussperren —
+  genau der Pfad, der serverseitig „possible token theft" loggt. Umsetzung: ein gemeinsames
+  Promise auf Modulebene, das alle weiteren Aufrufer abwarten. Das `.finally()`, das es wieder
+  auf `null` setzt, ist Pflicht — sonst funktioniert der Refresh genau einmal pro Seitenaufbau.
+- **`_isRetry` am Request verhindert eine Endlosschleife.** Antwortet auch der wiederholte
+  Request mit 401, wird nicht erneut refresht.
+- **`/api/auth/*` ist vom Refresh ausgenommen**, aus zwei Gründen. Erstens ist ein 401 beim
+  Login eine *legitime* Antwort (falsches Passwort) und kein abgelaufenes Token — ein Refresh
+  würde die Fehlermeldung verschlucken, die das Formular anzeigen soll. Zweitens würde der
+  Refresh-Request selbst bei 401 auf das Promise warten, auf dessen Abschluss er selbst nötig
+  ist: ein Deadlock ohne Fehlermeldung.
+- **Der wiederholte Request läuft erneut durch den Request-Interceptor.** `client(config)` geht
+  durch die komplette Kette, nicht daran vorbei — deshalb wird der `Authorization`-Header dort
+  bedingungslos gesetzt und nicht „nur falls noch keiner da ist". Die zwei Interceptors hängen an
+  dieser Stelle zusammen; ändert man den einen, bricht der andere.
+- **Bekannte Lücke: kein Ladezustand beim Start.** Zwischen Seitenaufruf und `mount()` liegt ein
+  Netzwerk-Request; solange er läuft, ist der Bildschirm leer. Lokal unmerklich, über echtes Netz
+  ein kurzer Weißblitz. Die Lösung wäre ein Ladezustand statt eines blockierenden `await`.
+
+### Frontend-Zustand: zwei Stores
+
+- **`authStore` hält die Sitzung, `userStore` das Profil** — derselbe Schnitt wie im Backend
+  zwischen `auth` und `user`. Die Regel lautet: Der Store folgt dem Package des Endpunkts. Der
+  Passwortwechsel liegt deshalb im `userStore`, obwohl er Tokens zurückgibt; die zwei
+  Reset-Actions liegen im `authStore`, obwohl sie die Sitzung nicht anfassen.
+- **Der `authStore` hat `setAccessToken` und `clearSession`** statt nur eines offenen Refs.
+  `clearSession` entstand nicht aus Ordnungsliebe: Nach dem Löschen eines Kontos darf kein
+  `logout()` mehr laufen, weil der Account weg ist — es braucht also einen Weg, die Sitzung ohne
+  Server-Aufruf zu beenden.
+- **Gegenseitige Aufrufe nur innerhalb der Actions.** Auf Modulebene wäre das ein Importzirkel;
+  im Funktionskörper wird es erst beim Aufruf aufgelöst.
+- **Das Profil wird beim Logout mitgeleert.** Ohne `clearUser` zeigte die Navbar nach dem
+  Abmelden noch den Namen des vorigen Benutzers.
+- **Das Profil liegt im Store, nicht in der View.** Vorher holte `HomeView` es selbst; damit
+  hätte jede weitere Ansicht einen eigenen Request gebraucht, und nach einer Umbenennung wüssten
+  zwei Stellen Verschiedenes. Geladen wird einmal in `bootstrap()`, die Ansichten lesen nur noch.
+- **`bootstrap()` lädt das Profil, nicht `restoreSession()`.** Die Startreihenfolge steht damit
+  sichtbar an einer Stelle. Der Aufruf steckt in einem `try/catch`: Ein fehlgeschlagener
+  Profil-Request darf das `mount()` nicht verhindern, sonst bleibt die Seite weiß — ohne Fehler,
+  ohne Login, einfach leer.
+- **Die Actions werfen, der Fehlertext entsteht in der Ansicht.** Ein `errorMessage` im Store
+  wäre für drei Formulare *ein* Feld — ein falsches Passwort im Lösch-Abschnitt erschiene auch
+  über dem Namensformular. Schlimmer: Eine Action, die den Fehler selbst fängt, kann ihrem
+  Aufrufer nicht mitteilen, dass es schiefging; die Ansicht zeigte ihre Erfolgsmeldung auch nach
+  einer 403.
+- **Antworten verwenden statt nachladen.** `updateUserName` übernimmt die zurückgegebene
+  `UserResponse`, statt danach `loadUser()` zu rufen. Ein zweiter Request wäre nicht nur
+  überflüssig: Schlägt *er* fehl, fliegt ein Fehler aus einer Operation, die längst erfolgreich
+  war.
+- **Navigation gehört in die Komponente, nicht in den Store.** Der Store leert den Zustand, die
+  Komponente leitet weiter.
+- **Die Navbar filtert nach Anmeldestand.** Jeder Eintrag trägt ein `auth`-Flag, ein `computed`
+  behält die passenden (`item.auth === isAuthenticated`). *Preis:* Zum Durchklicken in der
+  Entwicklung ist die ungefilterte Variante bequemer.
+
+### Fehlerformat & Konfiguration
+
+- **Einheitliches Fehlerformat `ProblemDetail`** (RFC-Standard, seit Spring 6 mitgeliefert)
+  statt eines eigenen Fehler-DTOs. Grund: Es gibt nicht nur eigene Exceptions, sondern auch
+  Framework-Fehler (Validierung, 404). Ein Hausformat hätte zwei Formate im System bedeutet.
+  Zentral im `GlobalExceptionHandler` (`common`), gültig für alle Controller.
+  Validierungsfehler liefern zusätzlich ein `errors`-Objekt mit Feldname → Meldung.
+  Im Frontend liest `api/errorMessage.ts` daraus das `detail`-Feld und unterscheidet zusätzlich
+  den Fall „Server gar nicht erreichbar" (keine `response` am Axios-Fehler).
+- **Validierungsmeldungen explizit auf Englisch** an den Annotationen. Ohne `message` liefert
+  Hibernate Validator die Meldung in der Sprache des `Accept-Language`-Headers — eine API, deren
+  Fehlertexte vom Aufrufer abhängen, ist für ein Frontend unbrauchbar. *Gilt auch für ein
+  einzelnes `@NotBlank`*, das man leicht ohne Meldung stehen lässt.
+- **Jedes Pflichtfeld braucht `@NotBlank`, auch ein Token.** Ohne die Annotation lief ein
+  fehlendes Token ungeprüft in `SecureTokenUtil.hash(null)` und ergab eine 500, wo eine 400
+  hingehört. Es gibt dafür jetzt einen Test.
+- **Konfiguration & Secret-Handling:** Kein Geheimnis im Repository. Signatur-Secret und
+  Mail-Zugangsdaten kommen ausschließlich aus Umgebungsvariablen — Platzhalter **ohne Default**
+  (`${JWT_SECRET}`, `${MAIL_USERNAME}`, `${MAIL_PASSWORD}`). Fehlt eine, startet die Anwendung
+  nicht (**Fail-Fast**). Gültigkeitsdauern sind kein Geheimnis und haben Defaults.
+- **Typisierte Konfigurationsklassen** statt feldweiser Injektion: `JwtProperties`,
+  `CookieProperties`, `CorsProperties`, `EmailProperties`, `PasswordResetProperties`. Eine
+  Stelle, an der steht was konfigurierbar ist, automatische Umwandlung nach `Duration`, und ein
+  Ort für die Validierung. Alle unter dem Präfix `handout-manager.`.
+- **Sicherer Default, lokale Abweichung:** In `application.properties` stehen die
+  *produktionstauglichen* Werte (`cookie.secure=true`), das Profil `local` überschreibt sie.
+  `application-local.properties` wird **eingecheckt** — sie enthält kein Geheimnis, und ohne sie
+  kann niemand das Repo lokal betreiben. *Eine dokumentierte Ausnahme:* SMTP-Host und -Port
+  stehen **nur** im Profil, nicht in der Hauptdatei — anders als bei den übrigen Werten gibt es
+  dort keinen produktionstauglichen Standard, solange kein Anbieter gewählt ist. Ein geratener
+  Host wäre schlechter als ein fehlender; ein Kommentar in der Datei sagt das, damit es nicht
+  wie ein Versehen aussieht.
+- **`server.error.include-stacktrace=never`** explizit gesetzt. Lokal überschreibt DevTools das
+  mit eigenen Entwicklungs-Defaults; DevTools ist `optional` und nicht Teil des
+  Produktions-Jars, dort greift die Einstellung also.
+
+### Spring-Security-Konfiguration
+
 - **`SecurityConfig` bewusst minimal gestartet** (stateless, `PasswordEncoder`, `/api/auth/**`
-  offen, Rest authentifiziert, CSRF vorerst aus) und schrittweise erweitert. Sie ließ sich nicht
-  in einem Zug fertigstellen, weil sie Endpunkte und den JWT-Filter referenziert, die es noch
-  nicht gab.
+  offen, Rest authentifiziert, CSRF aus) und schrittweise erweitert.
+- **Auth-Endpunkte unter `/api/auth/**`** — bewusst als Wildcard freigegeben, weil dort per
+  Definition unauthentifizierte Aufrufe ankommen. Die zwei Reset-Endpunkte brauchten deshalb
+  keine Änderung. Zusätzlich ist **`/error`** freigegeben: Springs interne Weiterleitung dorthin
+  durchläuft die Sicherheitskette erneut, und ohne Freigabe wird aus jedem 404 oder 400 ein 403.
+- **JWT-Filter über `@Component` + Konstruktor-Injektion**, eingehängt per `addFilterBefore`.
+  Dazu eine `FilterRegistrationBean` mit `setEnabled(false)`: Spring Boot registriert
+  Filter-Beans sonst zusätzlich in der Servlet-Filterkette, wo sie außerhalb der gewünschten
+  Reihenfolge laufen.
+- **CORS mit `allowCredentials(true)`** und dadurch zwingend konkreten Origins statt Wildcard
+  (Browser-Regel, nicht Spring-Regel). `OPTIONS` muss unter den erlaubten Methoden stehen, sonst
+  scheitert jeder Aufruf mit `Authorization`-Header an der Vorab-Anfrage.
+- **CSRF bewusst deaktiviert**, nicht vergessen: Das Access-Token reist im
+  `Authorization`-Header, den eine fremde Seite nicht setzen kann — header-basierte Auth ist
+  CSRF-immun. Das Refresh-Cookie ist die einzige automatisch mitgeschickte Anmeldeinformation,
+  und es ist durch `SameSite=Strict` geschützt. **Bedingung:** Das gilt nur, solange Frontend
+  und Backend als dieselbe Site zählen. Auf einer anderen Domain muss `SameSite` auf `None`
+  sinken — dann wird CSRF real und `/api/auth/refresh` braucht Token-Schutz.
+- **Cookie-Pfad `/api/auth` und Endpunkte außerhalb davon.** Der Passwortwechsel liegt unter
+  `/api/users`, *setzt* aber ein Cookie mit `Path=/api/auth`. Das Setzen funktioniert — der Pfad
+  bestimmt nur, wohin der Browser das Cookie künftig *mitschickt*. Lesen könnte dieser Endpunkt
+  das Cookie dagegen nicht; ein `@CookieValue` dort wäre nie gefüllt. *Im Browser nachgewiesen:*
+  Nach einem Passwortwechsel auf der Einstellungsseite funktioniert der nächste Refresh.
+
+### CI (GitHub Actions)
+
+Vorgezogen vor die Benutzerverwaltung, damit alle folgenden Branches von Anfang an geprüft
+werden. **Zwei parallele Jobs** (Backend, Frontend) statt eines langen — das Ergebnis ist
+schneller da und die Fehlerquelle sofort sichtbar. `concurrency` mit `cancel-in-progress`
+bricht überholte Läufe desselben Branches ab.
+
+Fallstricke, die beim Einrichten Zeit gekostet haben:
+
+- **`defaults.run.working-directory` gilt nicht für `uses:`-Schritte.** Die Cache-Action braucht
+  daher ein explizites `cache-dependency-path`, sonst findet sie die Lock-Datei nicht.
+- **Das Executable-Bit auf `mvnw`** steht im Git-Index, nicht im Dateisystem des Runners. Unter
+  Windows entwickelt, fehlt es — `./mvnw: Permission denied`. Einmalig mit
+  `git update-index --chmod=+x backend/mvnw` setzen.
+- **`postgres:latest` festnageln** (`postgres:18`). Ein gleitender Tag macht aus einem grünen
+  Lauf irgendwann einen roten, ohne dass sich der Code geändert hat.
+- **Das Test-Secret gehört in die Surefire-Konfiguration** (`<environmentVariables>`), nicht in
+  eine `src/test/resources/application.properties`. Eine gleichnamige Datei dort *ersetzt* die
+  Hauptdatei, statt sie zu ergänzen — damit wären `ddl-auto=validate` und alle anderen
+  Einstellungen still verschwunden.
+- **`run-s "lint:*"` zieht alles mit, was so heißt.** Ein zusätzliches Skript `lint:ci` lief
+  dadurch im normalen Lint-Durchlauf mit und verschluckte den Exit-Code. Umbenannt zu
+  `lint-ci`.
+- **Der Lint-Durchlauf hat eigene Regeln**, die der `type-check` nicht kennt: `vi.fn()` braucht
+  einen Typparameter, `toThrow` ein Argument. Beides erst in der CI aufgefallen.
 
 ---
 
@@ -289,53 +699,154 @@ frontend/src/
 
 - **FK-Löschverhalten** (`ON DELETE`) beim Schreiben der Flyway-Migrationen festlegen — z. B. `created_by` → SET NULL vs. Löschsperre; `membership`/`permission` → CASCADE.
 - **Datei-Speicherung:** `file_path` hält nur einen Verweis. Wo landen hochgeladene Dateien physisch (lokales Filesystem, Volume, Object Storage)? Noch offen.
-- **Diagramm-Feinschliff:** FK-Referenztexte im `.drawio` auf Singular/lowercase angleichen (`user(id)`, `project(id)`, `resource(id)`); Enum-Hinweise auf UPPER_SNAKE. Kosmetisch; spätestens beim Flyway-Schreiben korrekt umsetzen.
+- **Diagramm-Feinschliff:** FK-Referenztexte im `.drawio` auf Singular/lowercase angleichen (`user(id)`, `project(id)`, `resource(id)`); Enum-Hinweise auf UPPER_SNAKE. `refresh_token` und `password_reset_token` fehlen im Diagramm noch ganz.
 - **Namenskonventionen:** siehe `naming-conventions.md`.
 
 ### Branch-Plan für MVP-Schritt 1 (Auth)
 
 Aufgeteilt, damit kein Branch zu groß wird. Reihenfolge ergibt sich aus den Abhängigkeiten:
 
-1. **`feature/auth-backend`** *(abgeschlossen)* — jjwt, `JwtProperties`, `JwtService` + Tests,
-   minimale `SecurityConfig`, `refresh_token` (V6, Entity, Repository).
-2. **`feature/user`** — Benutzerverwaltung: Service, Passwort-Hashing über den vorhandenen
-   `PasswordEncoder`, Prüfung auf E-Mail-Eindeutigkeit. **Zuerst**, weil Registrierung einen
-   Benutzer schreibt und Login einen liest — ohne Benutzerverwaltung hat Auth nichts, womit
-   sie arbeiten kann.
-3. **`feature/auth`** — Endpunkte (Registrierung, Login, Refresh, Logout), Refresh-Mechanik
-   mit Rotation, **JWT-Filter**. Der Filter gehört bewusst hierher und nicht in Branch 1: Er
-   braucht ein echt ausgestelltes Token und einen geschützten Endpunkt, um überhaupt prüfbar
-   zu sein — und er fasst `SecurityConfig` an, dieselbe Datei wie die Endpunkt-Regeln.
-4. **`feature/auth-frontend`** — zweigt vom **gemergten** `main` ab, nicht vom heutigen Stand,
-   und arbeitet gegen das fertige Token-Modell.
+1. **`feature/auth-backend`** *(abgeschlossen, gemergt)* — jjwt, `JwtProperties`, `JwtService`
+   + Tests, minimale `SecurityConfig`, `refresh_token` (V6, Entity, Repository).
+2. **`feature/user`** *(abgeschlossen, gemergt)* — `UserService`, Passwort-Hashing,
+   E-Mail-Normalisierung und -Eindeutigkeit, `EmailAlreadyExistsException`. **Zuerst**, weil
+   Registrierung einen Benutzer schreibt und Login einen liest.
+3. **`feature/auth`** *(abgeschlossen, gemergt)* — Endpunkte, Refresh-Mechanik mit Rotation,
+   **JWT-Filter**, `GlobalExceptionHandler`, Cookie-/CORS-Konfiguration,
+   `AuthenticationEntryPoint`. Der Filter gehört bewusst hierher und nicht in Branch 1: Er
+   braucht ein echt ausgestelltes Token und einen geschützten Endpunkt, um überhaupt prüfbar zu
+   sein — und er fasst `SecurityConfig` an, dieselbe Datei wie die Endpunkt-Regeln.
+4. **`feature/auth-frontend`** *(abgeschlossen, gemergt)* — Vue-Projekt, Tailwind, Auth-Store,
+   Login- und Registrierungsformular, Router mit Guard, Start-Reihenfolge in `main.ts`, Request-
+   und Response-Interceptor, Vitest-Test für die Refresh-Sperre.
+5. **`chore/github-actions`** *(abgeschlossen, gemergt)* — CI vor den nächsten Features, damit
+   alle folgenden Branches geprüft ankommen.
+6. **`feature/user-management`** *(abgeschlossen, gemergt)* — Profil lesen, Benutzername und
+   Passwort ändern, Konto löschen; `revoked_reason` (V7), `RefreshCookieFactory`,
+   Einstellungsseite mit drei Komponenten, `userStore`, Tests auf beiden Seiten.
+7. **`feature/password-reset`** *(abgeschlossen)* — `password_reset_token` (V8),
+   `PasswordResetService`, zwei Endpunkte, `email`-Package mit `EmailSender`, Herausziehen von
+   `SecureTokenUtil`, zwei Frontend-Komponenten, Tests auf beiden Seiten.
 
 **Tests** laufen im jeweiligen Branch mit, nicht in einem eigenen: Test und zugehöriger Code
 sind dasselbe Stück Arbeit. Die Historie trennt das über den Commit-Typ `test`.
 
+**Merkposten zur Reihenfolge:** Was nicht zum Feature gehört (Ignore-Regeln, Testumbenennungen
+aus bereits gemergten Bereichen), gehört direkt auf `main` — sonst erbt ein später abzweigender
+Branch die Änderung nicht.
+
+### Nächste Branches
+
+1. **`refactor/async-mail`** — Versand in den Hintergrund: `@EnableAsync`, Executor, `@Async`
+   an der Versandmethode, Auslösung über ein `@TransactionalEventListener(phase = AFTER_COMMIT)`.
+   Die Vorbereitung dafür steckt bereits im Code (Abschnitt 8, Passwort-Reset).
+2. **`refactor/form-fields`** — ein gemeinsamer Formularbaustein für Text-, E-Mail- und
+   Passwortfelder. Das Passwortfeld mit Anzeigen-Umschalter kommt inzwischen siebenmal in sechs
+   Dateien vor; bei dieser Zahl lohnt sich das Herausziehen. Die Namensfrage
+   (`PasswordInput` gegen ein allgemeineres `FormField`) ist offen.
+3. **`chore/integration-tests`** — die vertagten Test-Lücken (siehe unten) plus der
+   Integrationstest mit Testcontainers.
+4. **MVP-Schritt 2: Projekte.**
+
+### Testabdeckung
+
+76 Tests (67 Backend, 9 Frontend), alle Sicherheitsentscheidungen maschinell abgesichert:
+
+| Klasse | Tests | Ebene | Kernaussagen |
+|---|---|---|---|
+| `JwtServiceTest` | 4 | Unit (BE) | Signaturprüfung greift, Manipulation wird erkannt, Ablauf wirkt |
+| `RefreshTokenServiceTest` | 8 | Unit (BE) | Klartext landet nie in der DB, Widerruf wird *gespeichert*, Grund wird festgehalten, `revokeAllTokens` erfasst jedes Token |
+| `UserServiceTest` | 11 | Unit (BE) | Passwort wird gehasht, E-Mail normalisiert, jede Änderung verlangt das Passwort, bei falschem Passwort wird das neue nicht einmal gehasht |
+| `AuthServiceTest` | 11 | Unit (BE) | Keine Enumeration, Rotation entwertet das *alte* Token, Logout wirft nie, Variante B in der richtigen Reihenfolge |
+| `PasswordResetServiceTest` | 8 | Unit (BE) | Unbekannte E-Mail bewirkt *nichts*, Link und gespeicherter Hash gehören zusammen, älteste Tokens werden entwertet, Reihenfolge beim Einlösen |
+| `AuthControllerTest` | 15 | Web-Layer (BE) | Statuscodes, Cookie-Attribute, Refresh-Token *nicht* im Body, 400 statt 500 bei fehlendem Reset-Token |
+| `UserControllerTest` | 10 | Web-Layer (BE) | 403 statt 401 bei falschem Passwort, Passwort-Hash verlässt den Server nie, Cookie wird beim Löschen entfernt |
+| `interceptors.spec.ts` | 3 | Unit (FE) | Ein Refresh bei parallelen 401ern, kein Refresh ohne Not, geordneter Abgang bei Fehlschlag |
+| `userStore.spec.ts` | 6 | Unit (FE) | Antworten werden übernommen statt nachgeladen, neuer Token landet im `authStore`, Löschen leert Profil *und* Sitzung |
+
+**Werkzeuge Backend:** Mockito nur dort, wo eine Abhängigkeit Verhalten hat — reine Datenhalter
+mit `new`, was bedeutet, dass der Prüfling von Hand konstruiert wird. `ArgumentCaptor`, um zu
+prüfen was der Code *erzeugt* hat; zwei Captor zusammen, um eine Zusage zu belegen, die keiner
+allein zeigt. `InOrder`, wenn die Reihenfolge die Aussage ist. `verify(…, never())` für den
+Nachweis, dass etwas *nicht* passiert. `ReflectionTestUtils` für generierte IDs.
+`@WebMvcTest` mit `@Import` der Sicherheitskomponenten und `@MockitoBean` für jeden Service des
+Controllers.
+
+**Werkzeuge Frontend:** Zwei Mock-Ebenen, je nachdem wo der Prüfling liegt — Axios-Adapter für
+die Interceptors selbst, Modul-Mock für Stores und Komponenten. `vi.hoisted` für gemockte
+Module, Reset der Modul-Singletons im `beforeEach`. Details im Cheatsheet.
+
+**Nachweis durch absichtliches Brechen:** Der Test der Refresh-Sperre wurde einmal ohne die
+Sperre laufen gelassen und zeigte wie erwartet zwei Refreshes statt einem. Erst damit ist das
+Grün eine Aussage.
+
+### Vertagte Tests (bewusst später)
+
+- **`JwtProperties`-Validierung:** Dass ein zu kurzes Secret den Start verhindert, ist nur
+  manuell geprüft.
+- **Login-Validierung** (`LoginRequestDTO`) und die restliche Registrierungs-Validierung.
+- **Datenbankschicht:** Repositories, Migrationen, `ON DELETE CASCADE` — bisher prüft nur
+  `ddl-auto=validate` beim Start. Die Kaskade beim Kontolöschen ist manuell nachgewiesen.
+- **Integrationstest mit Testcontainers:** Registrierung → Login → Refresh → Logout gegen eine
+  echte Datenbank. Schließt die beiden vorigen Lücken weitgehend in einem Durchlauf. *Dabei zu
+  beachten:* Sobald ein Test den vollen Kontext hochfährt, braucht er `MAIL_USERNAME` und
+  `MAIL_PASSWORD` — dieselbe Surefire-Lösung wie beim `JWT_SECRET`.
+- **Komponententest für die Einstellungsabschnitte** — fertig geschrieben, dann zurückgestellt:
+  Er hängt am Markup, und die Oberfläche war in Bewegung. Nach der Aufteilung in drei
+  Komponenten ist er leichter zu schreiben.
+- **Frontend sonst:** Die zwei Reset-Komponenten und die Reset-Actions im `authStore` sind
+  ungetestet. Die Actions sind je ein `client.post` ohne Logik — ein Test würde nur prüfen, dass
+  Axios gerufen wird. Playwright ist eingerichtet und ungenutzt; ein Ende-zu-Ende-Test
+  „Anmelden bis geschützte Seite" wäre der erste sinnvolle.
+
 ### Offene Punkte im Auth-Umfeld
 
-- **`/error` freigeben**, sobald der erste Auth-Endpunkt steht. Läuft ein Request auf einen
-  nicht existierenden Endpunkt, leitet Tomcat intern auf `/error` weiter; diese Weiterleitung
-  durchläuft die Sicherheitskette erneut und fällt unter `anyRequest().authenticated()` —
-  aus einem 404 wird ein 403. Häufige Fehlerquelle, kostet erfahrungsgemäß Stunden.
-- **CORS** mit `allowCredentials(true)` und dadurch zwingend konkreten Origins statt Wildcard
-  (Voraussetzung für das Refresh-Cookie).
-- **`SameSite`** bewusst setzen — bei getrennten Ports in der Entwicklung der häufigste
-  Stolperstein: Cookie wird gesetzt, kommt beim Folge-Request aber nicht mit, sichtbar nur als
-  unerklärtes 401. **`Secure`** gehört in Produktion gesetzt, funktioniert lokal über HTTP
-  nicht → profilabhängige Konfiguration nötig.
-- **CSRF** gezielt für den Refresh-Endpunkt behandeln, statt den Schutz global abzuschalten
-  (Cookies werden automatisch mitgeschickt).
-- **Aufräumjob** für abgelaufene und widerrufene `refresh_token`-Zeilen. Erst dann lohnt sich
-  ein Index auf `expires_at` — vorher wäre er reine Schreiblast auf der schreibintensivsten
-  Tabelle des Systems.
-- **`findByUserId` einschränken** auf nicht widerrufene Tokens
-  (`findByUserIdAndRevokedAtIsNull`), sobald „auf allen Geräten abmelden" konkret wird.
+- **`UserDetailsServiceAutoConfiguration` abschalten.** Spring Boot legt beim Start einen
+  In-Memory-Benutzer mit Zufallspasswort an, weil kein `UserDetailsService`-Bean existiert —
+  `AuthService` prüft das Passwort selbst. Aktuell harmlos, weil kein Endpunkt diesen Weg
+  benutzt, aber ein ungenutzter Anmeldeweg im Kontext. Lösung:
+  `@SpringBootApplication(exclude = UserDetailsServiceAutoConfiguration.class)` oder
+  `spring.autoconfigure.exclude`. Nachweis: Der Start-Log enthält kein
+  `Using generated security password`. Zu erledigen in `chore/integration-tests`.
+- **Aufräumjob** für abgelaufene und verbrauchte Token-Zeilen — betrifft jetzt **zwei** Tabellen,
+  `refresh_token` und `password_reset_token`. Erst dann lohnt sich ein Index auf `expires_at`.
+- **Echter E-Mail-Anbieter:** eigene Domain mit SPF-, DKIM- und DMARC-Einträgen. Am Code ändert
+  der Wechsel nichts (SMTP bleibt SMTP), die DNS-Arbeit ist der eigentliche Aufwand.
+- **HTML-Mails:** `SimpleMailMessage` liefert reinen Text. Für gestaltete Mails bräuchte es
+  `MimeMessage` und einen Template-Mechanismus — lohnt erst bei mehreren Mail-Arten.
+- **`reason`-Spalte für `password_reset_token`**, falls die Doppelbedeutung von `used_at`
+  („eingelöst" gegen „ersetzt") je störend wird.
 - **`equals` / `hashCode`** an den Entities — bei generierten IDs ein eigenes Thema mit
-  Fallstricken. Wird erst nötig, wenn Entities in Sets landen.
+  Fallstricken. Erstmals aufgefallen beim Testen der Rotation: Zwei über eine Hilfsmethode
+  erzeugte `RefreshToken`-Objekte sind für Mockito verschieden.
+- **`MissingRequestCookieException`-Handler** meldet „Refresh failed" — passt weiterhin, weil
+  der Refresh der einzige Endpunkt mit Pflicht-Cookie ist.
+- **Framework-Fehler jenseits von 404** (405, 415) liefern weiterhin Springs Standardformat.
+  Behebbar durch Erben von `ResponseEntityExceptionHandler`, was aber die bestehenden Handler
+  umbaut. Bewusst vertagt.
 - **`.env` / `.env.example`** anlegen, sobald das Backend containerisiert wird
   (`.gitignore` ist bereits vorbereitet).
+- **Mockito-Selbstattachierung:** Warnung beim Testlauf, künftige JDK-Versionen verbieten das
+  dynamische Laden von Agenten. Lösung ist eine Surefire-Konfiguration mit `-javaagent`.
+  Unkritisch bis das JDK es tatsächlich blockiert.
+
+### Erledigt seit dem letzten Stand
+
+- **Postman-Collection** nach `docs/` exportiert. *Dabei aufgeräumt:* Die Bearer-Auth liegt
+  jetzt auf der **Collection**, nicht in jedem Request — und ein `auth`-Block mit *leerem* Token
+  am Request überschreibt die Collection-Einstellung, statt sie zu erben. Die Requests müssen
+  deshalb ausdrücklich auf „Inherit auth from parent" stehen. Ein Query-Parameter
+  `?Authorization=Bearer` war als Überrest in einer URL stehen geblieben.
+- **`MeController`** ersetzt durch `GET /api/users/me`. `HomeView` liest aus dem `userStore`;
+  die `AppNavbar` filtert nach Anmeldestand.
+- **Prettier und `.vscode/settings.json`** auf `main` eingeführt. *Dabei gelernt:* Ein
+  `.gitignore`-Muster mit Schrägstrich am Ende (`.vscode/`) schließt das ganze Verzeichnis aus —
+  Git steigt nicht hinein, und keine Ausnahme weiter unten kann eine Datei zurückholen. Nötig
+  ist `**/.vscode/*` plus `!`-Ausnahmen je Datei, im Monorepo zusätzlich in der `.gitignore` des
+  Unterordners.
+- **`findByUserId` auf nicht widerrufene Tokens eingeschränkt**
+  (`findByUserIdAndRevokedAtIsNull`) — gebraucht für „alle Tokens widerrufen".
 
 ---
 
-*handout-manager · Projektplanung · Auth-Grundlage Backend abgeschlossen*
+*handout-manager · Projektplanung · MVP-Schritt 1 (Auth) abgeschlossen, inklusive Benutzerverwaltung und Passwort-Reset*
