@@ -1,6 +1,5 @@
 package at.handoutmanager.backend.auth;
 
-import at.handoutmanager.backend.email.EmailSender;
 import at.handoutmanager.backend.security.RefreshTokenService;
 import at.handoutmanager.backend.security.RevocationReason;
 import at.handoutmanager.backend.security.SecureTokenUtil;
@@ -15,6 +14,7 @@ import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
+import org.springframework.context.ApplicationEventPublisher;
 
 import java.time.Duration;
 import java.time.Instant;
@@ -50,13 +50,13 @@ class PasswordResetServiceTest {
     private RefreshTokenService refreshTokenService;
 
     @Mock
-    private EmailSender emailSender;
+    private ApplicationEventPublisher eventPublisher;
+
+    @Captor
+    private ArgumentCaptor<PasswordResetRequestedEvent> eventCaptor;
 
     @Captor
     private ArgumentCaptor<PasswordResetToken> tokenCaptor;
-
-    @Captor
-    private ArgumentCaptor<String> urlCaptor;
 
     private PasswordResetService sut;
 
@@ -67,7 +67,7 @@ class PasswordResetServiceTest {
         properties.setResetUrl(RESET_URL);
 
         sut = new PasswordResetService(userService, passwordResetTokenRepository,
-                refreshTokenService, emailSender, properties);
+                refreshTokenService, eventPublisher, properties);
     }
 
     // Requesting a reset
@@ -79,7 +79,25 @@ class PasswordResetServiceTest {
         sut.requestReset(UNKNOWN_EMAIL);
 
         verify(passwordResetTokenRepository, never()).save(any());
-        verify(emailSender, never()).sendPasswordReset(any(), any());
+        verifyNoInteractions(eventPublisher);
+    }
+
+    @Test
+    void shouldPublishLinkMatchingTheStoredHash_whenRequestingReset() {
+        when(userService.findByEmail(EMAIL)).thenReturn(Optional.of(existingUser()));
+
+        sut.requestReset(EMAIL);
+
+        verify(passwordResetTokenRepository).save(tokenCaptor.capture());
+        verify(eventPublisher).publishEvent(eventCaptor.capture());
+
+        PasswordResetRequestedEvent event = eventCaptor.getValue();
+        String sentToken = event.resetUrl().replace(RESET_URL + "?token=", "");
+
+        // The address in the event is the stored, normalised one - not the input.
+        assertThat(event.recipient()).isEqualTo(EMAIL);
+        assertThat(SecureTokenUtil.hash(sentToken))
+                .isEqualTo(tokenCaptor.getValue().getTokenHash());
     }
 
     @Test
@@ -95,21 +113,6 @@ class PasswordResetServiceTest {
         assertThat(stored.getUserId()).isEqualTo(USER_ID);
         assertThat(stored.getExpiresAt()).isAfter(Instant.now());
         assertThat(stored.getUsedAt()).isNull();
-    }
-
-    @Test
-    void shouldSendLinkMatchingTheStoredHash_whenRequestingReset() {
-        when(userService.findByEmail(EMAIL)).thenReturn(Optional.of(existingUser()));
-
-        sut.requestReset(EMAIL);
-
-        verify(passwordResetTokenRepository).save(tokenCaptor.capture());
-        verify(emailSender).sendPasswordReset(eq(EMAIL), urlCaptor.capture());
-
-        String sentToken = urlCaptor.getValue().replace(RESET_URL + "?token=", "");
-
-        assertThat(SecureTokenUtil.hash(sentToken))
-                .isEqualTo(tokenCaptor.getValue().getTokenHash());
     }
 
     @Test

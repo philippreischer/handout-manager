@@ -7,7 +7,8 @@ Repositories, JPA-Auditing. Auth-Strecke vollständig: Registrierung, Login, Ref
 Rotation, Logout, JWT-Filter, einheitliches Fehlerformat (`ProblemDetail`), profilabhängige
 Cookie- und CORS-Konfiguration. Benutzerverwaltung: Profil lesen, Benutzername und Passwort
 ändern, Konto löschen — jeweils mit Passwortbestätigung. Passwort-Reset per E-Mail über
-Mailtrap, mit einmalig verwendbarem Token. 67 Backend-Tests auf Unit- und Web-Ebene.
+Mailtrap, mit einmalig verwendbarem Token; der Versand läuft nach dem Commit in einem eigenen
+Thread-Pool. 69 Backend-Tests auf Unit-, Web- und Kontext-Ebene.
 Frontend: Vue 3 + TypeScript + Tailwind, Pinia-Stores für Auth und User, Login- und
 Registrierungsformular, Einstellungsseite mit drei Abschnitten, „Passwort vergessen" und
 Einlöse-Seite, Router mit Guard in beide Richtungen, Request- und Response-Interceptor mit
@@ -15,7 +16,7 @@ Refresh und Wiederholung, 9 Vitest-Tests.
 Im Browser nachgewiesen: CORS, HttpOnly-Cookie, SameSite, Rotation ohne Diebstahlwarnung,
 Passwortwechsel mit anschließend gültigem Refresh, vollständige Reset-Strecke über Mailtrap.
 GitHub Actions baut und testet Backend und Frontend bei jedem Pull Request.
-Als Nächstes: `refactor/async-mail`.
+Als Nächstes: `refactor/form-fields`.
 
 Diese Datei bündelt den gesamten Planungsstand als Kontext für spätere Arbeitssitzungen. Ergänzend: `naming-conventions.md` (Namenskonventionen) und das ER-Diagramm (`.drawio`).
 
@@ -283,6 +284,7 @@ handout-manager/
 backend/src/main/java/at/handoutmanager/backend/
 ├── auth/          (AuthController, DTOs, AuthService, PasswordResetService,
 │                   PasswordResetToken + Repository, PasswordResetProperties,
+│                   PasswordResetRequestedEvent, PasswordResetMailListener,
 │                   Exceptions)
 ├── user/          (UserController, UserService, DTOs, PasswordMismatchException,
 │                   UserNotFoundException)
@@ -294,7 +296,7 @@ backend/src/main/java/at/handoutmanager/backend/
 │                   Service, RevocationReason, RefreshCookieFactory, SecureTokenUtil,
 │                   CookieProperties, CorsProperties, AuthenticationEntryPoint)
 ├── email/         (EmailSender, EmailProperties)
-├── config/        (app-weite Konfiguration, JPA Auditing)
+├── config/        (app-weite Konfiguration, JPA Auditing, AsyncConfig)
 └── common/        (geteilte Exceptions, Hilfen, GlobalExceptionHandler, Auditable)
 ```
 
@@ -497,31 +499,104 @@ CORS-/Cookie-Konfiguration strukturell aufreißen würde.
   Passwort ohne Nachweis überschreibt.** Deshalb heißt sie anders als `changePassword` und nicht
   bloß „dasselbe mit weniger Parametern": Wer sie im Code sieht, soll stolpern und nachsehen,
   wer sie aufruft.
-- **Der Versand ist synchron — als bewusste Zwischenstufe.** Die Entscheidung für `@Async` ist
-  gefallen (siehe `refactor/async-mail`), aber getrennt umgesetzt, weil in dieser Branch der
-  E-Mail-Versand *an sich* neu war: SMTP-Konfiguration, Absenderadresse, Template, Mailtrap, der
-  Link mit dem Token. Kommt nichts an, will man nicht gleichzeitig überlegen, ob es an der
-  Konfiguration liegt oder daran, dass ein `@Async`-Selbstaufruf stillschweigend synchron läuft.
-- **Fünf Vorkehrungen, damit der Umbau auf `@Async` klein bleibt:** Der Versand liegt in einer
+- **Der Versand war in dieser Branch synchron — als bewusste Zwischenstufe.** Die Entscheidung
+  für `@Async` war gefallen, aber getrennt umgesetzt, weil hier der E-Mail-Versand *an sich* neu
+  war: SMTP-Konfiguration, Absenderadresse, Template, Mailtrap, der Link mit dem Token. Kommt
+  nichts an, will man nicht gleichzeitig überlegen, ob es an der Konfiguration liegt oder daran,
+  dass ein `@Async`-Selbstaufruf stillschweigend synchron läuft. Umgebaut in
+  `refactor/async-mail`, siehe nächster Unterabschnitt.
+- **Fünf Vorkehrungen, die den Umbau klein gehalten haben:** Der Versand liegt in einer
   **eigenen Bean**; sie bekommt **nur einfache Werte, keine Entities** (im Hintergrund-Thread
   gibt es keine Hibernate-Session, eine detachte Entität würde dort mit
   `LazyInitializationException` scheitern — in einem Thread, dessen Fehler nur im Log landen);
   der Aufruf steht **als letzte Zeile** der Service-Methode; der Link entsteht aus
-  **Konfiguration**; und der Fehler wird **dort gefangen, wo er entsteht**. Damit ist der Umbau
-  zwei Annotationen und ein Event.
-- **Die zwei Fallen beim späteren Umbau** sind notiert, damit sie nicht neu entdeckt werden
-  müssen: `@Async` wirkt über einen Proxy, ein Selbstaufruf innerhalb derselben Klasse läuft
-  stumm synchron weiter; und der Hintergrund-Thread läuft außerhalb der Transaktion, die Mail
-  kann also vor dem Commit draußen sein — ein schneller Klick trifft dann ein Token, das in der
-  Datenbank noch nicht existiert. Lösung: Auslösen über ein
-  `@TransactionalEventListener(phase = AFTER_COMMIT)`.
+  **Konfiguration**; und der Fehler wird **dort gefangen, wo er entsteht**. *Die Rechnung ist
+  aufgegangen:* Der Umbau kostete drei neue Dateien und eine geänderte Zeile im Service.
 - **Anbieterwechsel ist Konfiguration, keine Codeänderung** — solange der Versand über SMTP
   läuft und kein Anbieter-SDK dazukommt. Mailtrap *ist* ein SMTP-Server. Was beim Wechsel
   wirklich Arbeit macht, ist nicht der Code: Ein echter Anbieter akzeptiert nur eine verifizierte
   Domain, es braucht also SPF-, DKIM- und DMARC-Einträge im DNS. Deshalb steht die
   Absenderadresse von Anfang an in der Konfiguration.
-- **SMTP-Timeouts explizit gesetzt.** Ohne Angabe wartet JavaMail notfalls unbegrenzt — und
-  solange synchron gesendet wird, wartet der Request mit.
+- **SMTP-Timeouts explizit gesetzt.** Ohne Angabe wartet JavaMail notfalls unbegrenzt. Solange
+  synchron gesendet wurde, wartete der Request mit; seit `refactor/async-mail` belegt ein
+  hängender Versand stattdessen einen Thread des Mail-Pools — weshalb dort die Wartezeit beim
+  Herunterfahren an eben diesen Timeouts hängt.
+
+### Asynchroner Mail-Versand (`refactor/async-mail`)
+
+Der Versand verlässt den Request-Thread und läuft erst nach dem Commit. Fachlich ändert sich
+nichts, die Antwort bleibt 204.
+
+- **Drei neue Dateien, eine geänderte Zeile.** `config/AsyncConfig`,
+  `auth/PasswordResetRequestedEvent`, `auth/PasswordResetMailListener`; im Service wurde aus
+  `emailSender.sendPasswordReset(…)` ein `eventPublisher.publishEvent(…)`. `EmailSender` blieb
+  unberührt.
+- **Ein Sicherheitsgewinn, der vorher nicht auf der Liste stand:** Der synchrone Versand war ein
+  Zeit-Orakel für Benutzer-Enumeration. Eine bekannte Adresse wartete auf SMTP, eine unbekannte
+  kehrte sofort zurück. Gemessen waren das **2,4 Sekunden** Unterschied — grob genug, dass es
+  keine Statistik braucht, anders als der dokumentierte BCrypt-Zeitunterschied beim Login. Der
+  Umbau schließt die Lücke, weil beide Fälle jetzt gleich schnell antworten. Aufgefallen ist das
+  erst beim Durchdenken der Branch, nicht beim Entwurf des Resets.
+- **Eigener `mailExecutor` statt Springs Default-Executor.** Spring Boot konfiguriert aus
+  `spring.task.execution.*` bereits einen Pool, den `@EnableAsync` ohne Zutun benutzt — das wäre
+  eine Klasse weniger gewesen. Dagegen sprach: Der Qualifier macht im Code sichtbar, auf welchem
+  Pool die Methode läuft, und ein hängender Versand kann keine andere Hintergrundarbeit
+  aushungern. Heute gibt es keine andere — das Argument ist Vorsorge und als solche notiert.
+- **`AsyncConfigurer` nur für den Exception-Handler.** `getAsyncExecutor()` bleibt
+  unüberschrieben, damit Springs Default-Pool für alles andere erhalten bleibt und der Mail-Pool
+  ausschließlich über `@Async("mailExecutor")` erreichbar ist. Ohne eigenen Handler verschwindet
+  ein Fehler aus einer `void`-`@Async`-Methode in Springs Standard-Handler, der die Exception
+  kennt, aber nicht die Methode, die sie geworfen hat.
+- **Der Handler loggt die Parameter *nicht*.** Verlockend wäre es — man will wissen, bei welcher
+  Mail es geknallt hat. Aber das Event trägt die Reset-URL und darin das Roh-Token, das in der
+  Datenbank extra nur als Hash liegt. Methodenname und Exception genügen.
+- **`toString()` des Events ist überschrieben**, aus demselben Grund: Ein Record gibt automatisch
+  *alle* Felder aus. Jede Debug-Zeile, jedes Tracing hätte das Token im Klartext in die Logdatei
+  geschrieben — die Vordertür neben dem verschlossenen Tresor. Die Adresse bleibt drin, sie macht
+  einen Log-Eintrag brauchbar und ist kein Nachweis.
+- **Ein Event, kein Kommando.** `PasswordResetRequestedEvent` steht in der Vergangenheit und
+  stellt eine Tatsache fest; `SendPasswordResetMailEvent` wäre ein Auftrag, bei dem der Absender
+  die Aufgabe des Empfängers festlegt. Der Unterschied zahlt sich beim zweiten Zuhörer aus
+  (Audit-Eintrag, Metrik), der dann nichts umbenennen muss.
+- **Der Listener liegt in `auth`, nicht in `email`.** Läge er dort, müsste Infrastruktur ein
+  Event aus einem Anwendungsfall importieren — gegen die dokumentierte Richtung. So ist die
+  einzige Kante von `auth` nach `email` eine Klasse, deren ganzer Zweck diese Verbindung ist, und
+  `PasswordResetService` kennt das Package überhaupt nicht mehr.
+- **Eigene Klasse statt Methode im Service — das löst die Proxy-Falle strukturell.** `@Async`
+  wirkt nur über den Proxy; ein Selbstaufruf innerhalb derselben Klasse läuft **stumm** synchron
+  weiter. In einer separaten Bean kann das nicht passieren. Die Methode ist `public`, weil das
+  die einzige Sichtbarkeit ist, für die Spring Proxying zusichert.
+- **Kein `fallbackExecution = true`.** Ein `@TransactionalEventListener` tut *nichts*, wenn das
+  Event außerhalb einer Transaktion veröffentlicht wird — ohne Fehler, ohne Warnung. Der Schalter
+  würde dann sofort ausführen. Bewusst nicht gesetzt: Fehlt dem Service das `@Transactional`,
+  zeigt sich das so unübersehbar als „es kommt keine Mail an". Mit dem Schalter flössen die Mails
+  weiter und die Zusage „erst nach dem Commit" wäre still verschwunden.
+- **Kein `@Transactional` am Listener.** Liegt nahe, ist falsch: Die Transaktion ist zu diesem
+  Zeitpunkt beendet, und eine neue würde eine Datenbankverbindung halten, solange der
+  SMTP-Server hängt.
+- **Erfolg wird geloggt, nicht nur der Fehler.** Vorher war Erfolg Stille — damit war „nie
+  versendet" von „versendet, aber nicht angekommen" nicht zu unterscheiden, und der Thread-Wechsel
+  war unbeobachtbar. Die Zeile nennt nur das Subject, dieselbe Regel wie im Fehlerfall.
+- **`setWaitForTasksToCompleteOnShutdown(true)` mit 20 Sekunden**, weil Connect-, Read- und
+  Write-Timeout je auf 5000 stehen und ein einzelner hängender Versand damit gut 15 Sekunden
+  belegen kann. Kürzer gewählt, und der Shutdown schneidet genau den Versand ab, auf den er
+  warten sollte. Ohne die Einstellung verwirft ein Herunterfahren die Warteschlange lautlos.
+
+**Zwei bewusste Lücken:**
+
+- **Die Ablehnungsstrategie bleibt der Default (`AbortPolicy`).** Läuft die Queue (50) über, geht
+  die Mail mit einer Exception im Log verloren. `CallerRunsPolicy` würde den Versand auf dem
+  Request-Thread ausführen und damit beides zurückholen, was diese Branch abschafft: die
+  Wartezeit und das Zeit-Orakel. Verlieren ist hier besser als blockieren — ein Verlust bleibt
+  es.
+- **Die Pool-Größen sind nicht konfigurierbar** (Core 2, Max 4, Queue 50, hart im Code). Für die
+  erwartete Last reicht das, aber es ist genau die Art Wert, die im Betrieb nachgestellt wird;
+  nachzurüsten als Properties unter `handout-manager.`.
+
+**Nachgewiesen, und wie:** Thread `mail-1` statt `nio-8080-exec-…` in der Erfolgszeile des
+`EmailSender`, und diese Zeile 2,4 Sekunden *nach* `Password reset token issued`. Beides erst
+sichtbar, nachdem die Erfolgszeile dazukam. Dass die zwei Annotationen greifen, prüft kein
+Unit-Test — das muss der Integrationstest nachholen.
 
 ### Frontend-Auth (MVP-Schritt 1)
 
@@ -632,10 +707,17 @@ CORS-/Cookie-Konfiguration strukturell aufreißen würde.
   *produktionstauglichen* Werte (`cookie.secure=true`), das Profil `local` überschreibt sie.
   `application-local.properties` wird **eingecheckt** — sie enthält kein Geheimnis, und ohne sie
   kann niemand das Repo lokal betreiben. *Eine dokumentierte Ausnahme:* SMTP-Host und -Port
-  stehen **nur** im Profil, nicht in der Hauptdatei — anders als bei den übrigen Werten gibt es
-  dort keinen produktionstauglichen Standard, solange kein Anbieter gewählt ist. Ein geratener
-  Host wäre schlechter als ein fehlender; ein Kommentar in der Datei sagt das, damit es nicht
-  wie ein Versehen aussieht.
+  sowie die **Reset-URL** stehen **nur** im Profil, nicht in der Hauptdatei. Der Grund ist nicht
+  allein, dass es keinen produktionstauglichen Standard gibt — es ist die *Art*, wie ein
+  geratener Standard scheitert. Ein falscher Mail-Host nimmt die Nachricht an und verliert sie;
+  eine Reset-URL auf `localhost` verschickt Links, die niemand öffnen kann. Beides fällt beim
+  Start nicht auf, sondern erst beim Benutzer. Ohne Wert startet die Anwendung dagegen gar nicht
+  — das ist die laute Variante, und die ist hier die bessere.
+  *Abgrenzung:* `cors.allowed-origins` behält seinen `localhost`-Default, obwohl es dieselbe
+  Frontend-Adresse beschreibt — eine falsche Origin bricht sofort und sichtbar im Browser ab.
+  Die Regel lautet also nicht „Frontend-Adressen haben keine Defaults", sondern „ein Default,
+  dessen Fehler still bleibt, ist keiner". Ein Kommentar in beiden Dateien sagt das, damit es
+  nicht wie ein Versehen aussieht.
 - **`server.error.include-stacktrace=never`** explizit gesetzt. Lokal überschreibt DevTools das
   mit eigenen Entwicklungs-Defaults; DevTools ist `optional` und nicht Teil des
   Produktions-Jars, dort greift die Einstellung also.
@@ -683,10 +765,21 @@ Fallstricke, die beim Einrichten Zeit gekostet haben:
   `git update-index --chmod=+x backend/mvnw` setzen.
 - **`postgres:latest` festnageln** (`postgres:18`). Ein gleitender Tag macht aus einem grünen
   Lauf irgendwann einen roten, ohne dass sich der Code geändert hat.
-- **Das Test-Secret gehört in die Surefire-Konfiguration** (`<environmentVariables>`), nicht in
-  eine `src/test/resources/application.properties`. Eine gleichnamige Datei dort *ersetzt* die
+- **Was der Produktionskonfiguration bewusst fehlt, muss der Testlauf mitbringen — auf zwei
+  getrennten Wegen.** Umgebungsvariablen (`JWT_SECRET`, `MAIL_USERNAME`, `MAIL_PASSWORD`) über
+  die Surefire-Konfiguration (`<environmentVariables>`), **nicht** über eine
+  `src/test/resources/application.properties`: Eine gleichnamige Datei dort *ersetzt* die
   Hauptdatei, statt sie zu ergänzen — damit wären `ddl-auto=validate` und alle anderen
-  Einstellungen still verschwunden.
+  Einstellungen still verschwunden. Properties, die nur im Profil `local` stehen (SMTP-Host,
+  Reset-URL), über `@SpringBootTest(properties = …)` an der Testklasse: Der Kontext-Test läuft
+  ohne aktives Profil und sieht die Profildatei nicht. *Dreimal nacheinander aufgelaufen*, weil
+  jeder fehlende Wert denselben Fehler erzeugt und immer nur der erste sichtbar ist — nach jedem
+  Fix scheitert der Kontext an der nächsten Lücke.
+- **`Failed to load ApplicationContext` ist ohne Ursachenkette nicht diagnostizierbar**, und die
+  Kette steht nicht dort, wo man sie sucht. Die Zusammenfassung am Ende des Logs nennt nur die
+  Hülle; die eigentliche Meldung (`UnsatisfiedDependencyException`, `APPLICATION FAILED TO
+  START`) steht **oben** im Log, weil `BackendApplicationTests` im Basis-Package liegt und damit
+  als erste Testklasse läuft. Wer nur das Ende liest, rät.
 - **`run-s "lint:*"` zieht alles mit, was so heißt.** Ein zusätzliches Skript `lint:ci` lief
   dadurch im normalen Lint-Durchlauf mit und verschluckte den Exit-Code. Umbenannt zu
   `lint-ci`.
@@ -737,20 +830,19 @@ Branch die Änderung nicht.
 
 ### Nächste Branches
 
-1. **`refactor/async-mail`** — Versand in den Hintergrund: `@EnableAsync`, Executor, `@Async`
-   an der Versandmethode, Auslösung über ein `@TransactionalEventListener(phase = AFTER_COMMIT)`.
-   Die Vorbereitung dafür steckt bereits im Code (Abschnitt 8, Passwort-Reset).
-2. **`refactor/form-fields`** — ein gemeinsamer Formularbaustein für Text-, E-Mail- und
+*Erledigt: `refactor/async-mail` — Entscheidungen und Nachweis in Abschnitt 8.*
+
+1. **`refactor/form-fields`** — ein gemeinsamer Formularbaustein für Text-, E-Mail- und
    Passwortfelder. Das Passwortfeld mit Anzeigen-Umschalter kommt inzwischen siebenmal in sechs
    Dateien vor; bei dieser Zahl lohnt sich das Herausziehen. Die Namensfrage
    (`PasswordInput` gegen ein allgemeineres `FormField`) ist offen.
-3. **`chore/integration-tests`** — die vertagten Test-Lücken (siehe unten) plus der
+2. **`chore/integration-tests`** — die vertagten Test-Lücken (siehe unten) plus der
    Integrationstest mit Testcontainers.
-4. **MVP-Schritt 2: Projekte.**
+3. **MVP-Schritt 2: Projekte.**
 
 ### Testabdeckung
 
-76 Tests (67 Backend, 9 Frontend), alle Sicherheitsentscheidungen maschinell abgesichert:
+78 Tests (69 Backend, 9 Frontend), alle Sicherheitsentscheidungen maschinell abgesichert:
 
 | Klasse | Tests | Ebene | Kernaussagen |
 |---|---|---|---|
@@ -758,9 +850,11 @@ Branch die Änderung nicht.
 | `RefreshTokenServiceTest` | 8 | Unit (BE) | Klartext landet nie in der DB, Widerruf wird *gespeichert*, Grund wird festgehalten, `revokeAllTokens` erfasst jedes Token |
 | `UserServiceTest` | 11 | Unit (BE) | Passwort wird gehasht, E-Mail normalisiert, jede Änderung verlangt das Passwort, bei falschem Passwort wird das neue nicht einmal gehasht |
 | `AuthServiceTest` | 11 | Unit (BE) | Keine Enumeration, Rotation entwertet das *alte* Token, Logout wirft nie, Variante B in der richtigen Reihenfolge |
-| `PasswordResetServiceTest` | 8 | Unit (BE) | Unbekannte E-Mail bewirkt *nichts*, Link und gespeicherter Hash gehören zusammen, älteste Tokens werden entwertet, Reihenfolge beim Einlösen |
+| `PasswordResetServiceTest` | 8 | Unit (BE) | Unbekannte E-Mail bewirkt *nichts*, Link im Ereignis und gespeicherter Hash gehören zusammen, die Adresse im Ereignis ist die normalisierte, offene Tokens werden entwertet, Reihenfolge beim Einlösen |
+| `PasswordResetMailListenerTest` | 1 | Unit (BE) | Empfänger und Link gehen in dieser Reihenfolge an den `EmailSender` — beide sind Strings, ein Vertauschen kompiliert |
 | `AuthControllerTest` | 15 | Web-Layer (BE) | Statuscodes, Cookie-Attribute, Refresh-Token *nicht* im Body, 400 statt 500 bei fehlendem Reset-Token |
 | `UserControllerTest` | 10 | Web-Layer (BE) | 403 statt 401 bei falschem Passwort, Passwort-Hash verlässt den Server nie, Cookie wird beim Löschen entfernt |
+| `BackendApplicationTests` | 1 | Kontext (BE) | Der vollständige Kontext startet — also ist jede Bean verdrahtet und die Fail-Fast-Konfiguration vollständig mit Werten versorgt |
 | `interceptors.spec.ts` | 3 | Unit (FE) | Ein Refresh bei parallelen 401ern, kein Refresh ohne Not, geordneter Abgang bei Fehlschlag |
 | `userStore.spec.ts` | 6 | Unit (FE) | Antworten werden übernommen statt nachgeladen, neuer Token landet im `authStore`, Löschen leert Profil *und* Sitzung |
 
@@ -788,9 +882,12 @@ Grün eine Aussage.
 - **Datenbankschicht:** Repositories, Migrationen, `ON DELETE CASCADE` — bisher prüft nur
   `ddl-auto=validate` beim Start. Die Kaskade beim Kontolöschen ist manuell nachgewiesen.
 - **Integrationstest mit Testcontainers:** Registrierung → Login → Refresh → Logout gegen eine
-  echte Datenbank. Schließt die beiden vorigen Lücken weitgehend in einem Durchlauf. *Dabei zu
-  beachten:* Sobald ein Test den vollen Kontext hochfährt, braucht er `MAIL_USERNAME` und
-  `MAIL_PASSWORD` — dieselbe Surefire-Lösung wie beim `JWT_SECRET`.
+  echte Datenbank. Schließt die beiden vorigen Lücken weitgehend in einem Durchlauf.
+- **Dass `@TransactionalEventListener(AFTER_COMMIT)` und `@Async` wirklich greifen**, prüft kein
+  Unit-Test: Der Listener-Test ruft die Methode direkt auf und geht damit am Proxy vorbei. Bisher
+  nur manuell nachgewiesen (Thread-Name und Reihenfolge im Log). Im Integrationstest zu
+  erledigen, zusammen mit dem Fall „kein `@Transactional` am Service" — dann müsste gar keine
+  Mail rausgehen.
 - **Komponententest für die Einstellungsabschnitte** — fertig geschrieben, dann zurückgestellt:
   Er hängt am Markup, und die Oberfläche war in Bewegung. Nach der Aufteilung in drei
   Komponenten ist er leichter zu schreiben.

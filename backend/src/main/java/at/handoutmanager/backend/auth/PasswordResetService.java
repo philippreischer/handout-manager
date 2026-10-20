@@ -1,6 +1,5 @@
 package at.handoutmanager.backend.auth;
 
-import at.handoutmanager.backend.email.EmailSender;
 import at.handoutmanager.backend.security.RefreshTokenService;
 import at.handoutmanager.backend.security.RevocationReason;
 import at.handoutmanager.backend.security.SecureTokenUtil;
@@ -8,6 +7,7 @@ import at.handoutmanager.backend.user.User;
 import at.handoutmanager.backend.user.UserService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -23,18 +23,18 @@ public class PasswordResetService {
     private final UserService userService;
     private final PasswordResetTokenRepository passwordResetTokenRepository;
     private final RefreshTokenService refreshTokenService;
-    private final EmailSender emailSender;
+    private final ApplicationEventPublisher eventPublisher;
     private final PasswordResetProperties passwordResetProperties;
 
     public PasswordResetService(UserService userService,
                                 PasswordResetTokenRepository passwordResetTokenRepository,
                                 RefreshTokenService refreshTokenService,
-                                EmailSender emailSender,
+                                ApplicationEventPublisher eventPublisher,
                                 PasswordResetProperties passwordResetProperties) {
         this.userService = userService;
         this.passwordResetTokenRepository = passwordResetTokenRepository;
         this.refreshTokenService = refreshTokenService;
-        this.emailSender = emailSender;
+        this.eventPublisher = eventPublisher;
         this.passwordResetProperties = passwordResetProperties;
     }
 
@@ -56,7 +56,12 @@ public class PasswordResetService {
                 new PasswordResetToken(userId, SecureTokenUtil.hash(rawToken), expiresAt));
 
         log.info("Password reset token issued for user {}", userId);
-        emailSender.sendPasswordReset(user.get().getEmail(), buildResetUrl(rawToken));
+
+        // Published, not sent: the listener picks this up after the commit, so the mail
+        // can never reference a token that is not in the database yet. Must stay the
+        // last statement - everything the mail depends on has to be written by now.
+        eventPublisher.publishEvent(
+                new PasswordResetRequestedEvent(user.get().getEmail(), buildResetUrl(rawToken)));
     }
 
     @Transactional
