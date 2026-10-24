@@ -1,35 +1,35 @@
 <script setup lang="ts">
-  import { ref } from 'vue'
-  import { useRouter } from 'vue-router'
-  import { useAuthStore } from '@/stores/authStore'
-  import { extractErrorMessage } from '@/api/errorMessage'
-  import UserNameField from '@/components/ui/UserNameField.vue'
-  import EmailField from '@/components/ui/EmailField.vue'
-  import PasswordField from '@/components/ui/PasswordField.vue'
+import { ref } from 'vue'
+import { useRouter } from 'vue-router'
+import { useAuthStore } from '@/stores/authStore'
+import { extractErrorMessage } from '@/api/errorMessage'
+import UserNameField from '@/components/ui/UserNameField.vue'
+import EmailField from '@/components/ui/EmailField.vue'
+import PasswordField from '@/components/ui/PasswordField.vue'
 
-  const router = useRouter()
-  const authStore = useAuthStore()
+const router = useRouter()
+const authStore = useAuthStore()
 
-  const email = ref('')
-  const password = ref('')
-  const userName = ref('')
-  const errorMessage = ref<string | null>(null)
-  const isSubmitting = ref(false)
+const email = ref('')
+const password = ref('')
+const userName = ref('')
+const errorMessage = ref<string | null>(null)
+const isSubmitting = ref(false)
 
-  async function handleSubmit() {
-    errorMessage.value = null
-    isSubmitting.value = true
+async function handleSubmit() {
+  errorMessage.value = null
+  isSubmitting.value = true
 
-    try {
-      await authStore.register(email.value, password.value, userName.value)
-      // Registration does not sign the user in - the backend answers 201 without tokens.
-      await router.push({ name: 'login' })
-    } catch (error) {
-      errorMessage.value = extractErrorMessage(error, 'Registration failed.')
-    } finally {
-      isSubmitting.value = false
-    }
+  try {
+    await authStore.register(email.value, password.value, userName.value)
+    // Registration does not sign the user in - the backend answers 201 without tokens.
+    await router.push({ name: 'login' })
+  } catch (error) {
+    errorMessage.value = extractErrorMessage(error, 'Registration failed.')
+  } finally {
+    isSubmitting.value = false
   }
+}
 </script>
 
 <template>

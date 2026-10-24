@@ -38,9 +38,7 @@ async function handleSubmit() {
   <form class="space-y-5" @submit.prevent="handleSubmit">
     <h2 class="text-lg font-semibold text-slate-200">Sign in</h2>
 
-    <p v-if="accountDeleted" class="text-sm text-emerald-400">
-      Your account has been deleted.
-    </p>
+    <p v-if="accountDeleted" class="text-sm text-emerald-400">Your account has been deleted.</p>
 
     <p v-else-if="passwordWasReset" class="text-sm text-emerald-400">
       Your password has been changed. Sign in with the new one.
@@ -63,10 +61,7 @@ async function handleSubmit() {
     </button>
 
     <p class="text-center text-sm text-slate-400">
-      <RouterLink
-        :to="{ name: 'forgot-password' }"
-        class="text-emerald-400 hover:underline"
-      >
+      <RouterLink :to="{ name: 'forgot-password' }" class="text-emerald-400 hover:underline">
         Forgot your password?
       </RouterLink>
     </p>

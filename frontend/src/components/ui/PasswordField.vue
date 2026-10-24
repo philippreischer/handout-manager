@@ -1,20 +1,20 @@
 <script setup lang="ts">
-  import { computed, ref } from 'vue'
-  import FormField from './FormField.vue'
+import { computed, ref } from 'vue'
+import FormField from './FormField.vue'
 
-  const model = defineModel<string>({ required: true })
-  const showPassword = ref(false)
+const model = defineModel<string>({ required: true })
+const showPassword = ref(false)
 
-  const props = withDefaults(
-    defineProps<{
-      id: string
-      label?: string
-      purpose?: 'current' | 'new'
-    }>(),
-    { label: 'Password', purpose: 'current' },
-  )
+const props = withDefaults(
+  defineProps<{
+    id: string
+    label?: string
+    purpose?: 'current' | 'new'
+  }>(),
+  { label: 'Password', purpose: 'current' },
+)
 
-  const isNew = computed(() => props.purpose === 'new')
+const isNew = computed(() => props.purpose === 'new')
 </script>
 
 <template>

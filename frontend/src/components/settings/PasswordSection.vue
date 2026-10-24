@@ -1,33 +1,33 @@
 <script setup lang="ts">
-  import { ref } from 'vue'
-  import { useUserStore } from '@/stores/userStore'
-  import { extractErrorMessage } from '@/api/errorMessage'
-  import PasswordField from '@/components/ui/PasswordField.vue'
+import { ref } from 'vue'
+import { useUserStore } from '@/stores/userStore'
+import { extractErrorMessage } from '@/api/errorMessage'
+import PasswordField from '@/components/ui/PasswordField.vue'
 
-  const userStore = useUserStore()
+const userStore = useUserStore()
 
-  const password = ref('')
-  const newPassword = ref('')
-  const isSubmitting = ref(false)
-  const errorMessage = ref<string | null>(null)
-  const isChanged = ref(false)
+const password = ref('')
+const newPassword = ref('')
+const isSubmitting = ref(false)
+const errorMessage = ref<string | null>(null)
+const isChanged = ref(false)
 
-  async function handleSubmit() {
-    errorMessage.value = null
-    isChanged.value = false
-    isSubmitting.value = true
+async function handleSubmit() {
+  errorMessage.value = null
+  isChanged.value = false
+  isSubmitting.value = true
 
-    try {
-      await userStore.changePassword(password.value, newPassword.value)
-      isChanged.value = true
-      password.value = ''
-      newPassword.value = ''
-    } catch (error) {
-      errorMessage.value = extractErrorMessage(error, 'Could not change password.')
-    } finally {
-      isSubmitting.value = false
-    }
+  try {
+    await userStore.changePassword(password.value, newPassword.value)
+    isChanged.value = true
+    password.value = ''
+    newPassword.value = ''
+  } catch (error) {
+    errorMessage.value = extractErrorMessage(error, 'Could not change password.')
+  } finally {
+    isSubmitting.value = false
   }
+}
 </script>
 
 <template>
@@ -35,14 +35,13 @@
     <h2 class="mb-4 text-lg font-semibold text-slate-100">Password</h2>
 
     <form class="space-y-4" @submit.prevent="handleSubmit">
-    
       <PasswordField id="settings-current-password" v-model="password" />
 
-      <PasswordField 
-        id="settings-new-password" 
-        label="New password" 
-        v-model="newPassword" 
-        purpose="new" 
+      <PasswordField
+        id="settings-new-password"
+        label="New password"
+        v-model="newPassword"
+        purpose="new"
       />
 
       <p v-if="errorMessage" class="text-sm text-red-400">{{ errorMessage }}</p>

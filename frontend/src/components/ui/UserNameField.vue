@@ -1,15 +1,15 @@
 <script setup lang="ts">
-  import FormField from './FormField.vue'
+import FormField from './FormField.vue'
 
-  const model = defineModel<string>({ required: true })
+const model = defineModel<string>({ required: true })
 
-  withDefaults(
-    defineProps<{
-      id: string
-      label?: string
-    }>(),
-    { label: 'Username' },
-  )
+withDefaults(
+  defineProps<{
+    id: string
+    label?: string
+  }>(),
+  { label: 'Username' },
+)
 </script>
 
 <template>
@@ -20,5 +20,5 @@
     required
     maxlength="255"
     autocomplete="username"
-  />    
+  />
 </template>

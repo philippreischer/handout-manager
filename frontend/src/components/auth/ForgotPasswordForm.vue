@@ -45,8 +45,7 @@ async function handleSubmit() {
       server answers the same way either way, and so does this message.
     -->
     <p v-else-if="isSent" class="text-sm text-emerald-400">
-      If an account exists for this address, a link is on its way. The link is valid
-      for 30 minutes.
+      If an account exists for this address, a link is on its way. The link is valid for 30 minutes.
     </p>
 
     <button

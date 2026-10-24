@@ -1,31 +1,31 @@
 <script setup lang="ts">
-  import { ref } from 'vue'
-  import { useRouter } from 'vue-router'
-  import { useUserStore } from '@/stores/userStore'
-  import { extractErrorMessage } from '@/api/errorMessage'
-  import PasswordField from '@/components/ui/PasswordField.vue'
+import { ref } from 'vue'
+import { useRouter } from 'vue-router'
+import { useUserStore } from '@/stores/userStore'
+import { extractErrorMessage } from '@/api/errorMessage'
+import PasswordField from '@/components/ui/PasswordField.vue'
 
-  const router = useRouter()
-  const userStore = useUserStore()
+const router = useRouter()
+const userStore = useUserStore()
 
-  const password = ref('')
-  const isSubmitting = ref(false)
-  const errorMessage = ref<string | null>(null)
+const password = ref('')
+const isSubmitting = ref(false)
+const errorMessage = ref<string | null>(null)
 
-  async function handleSubmit() {
-    errorMessage.value = null
-    isSubmitting.value = true
+async function handleSubmit() {
+  errorMessage.value = null
+  isSubmitting.value = true
 
-    try {
-      await userStore.deleteAccount(password.value)
-      
-      await router.push({ name: 'login', query: { deleted: '1' } })
-    } catch (error) {
-      errorMessage.value = extractErrorMessage(error, 'Could not delete account.')
-    } finally {
-      isSubmitting.value = false
-    }
+  try {
+    await userStore.deleteAccount(password.value)
+
+    await router.push({ name: 'login', query: { deleted: '1' } })
+  } catch (error) {
+    errorMessage.value = extractErrorMessage(error, 'Could not delete account.')
+  } finally {
+    isSubmitting.value = false
   }
+}
 </script>
 
 <template>
@@ -36,7 +36,6 @@
     </p>
 
     <form class="space-y-4" @submit.prevent="handleSubmit">
-      
       <PasswordField id="settings-delete-password" v-model="password" />
 
       <p v-if="errorMessage" class="text-sm text-red-400">{{ errorMessage }}</p>
