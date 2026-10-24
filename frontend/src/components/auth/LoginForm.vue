@@ -3,6 +3,8 @@ import { ref, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/authStore'
 import { extractErrorMessage } from '@/api/errorMessage'
+import EmailField from '@/components/ui/EmailField.vue'
+import PasswordField from '@/components/ui/PasswordField.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -10,7 +12,6 @@ const authStore = useAuthStore()
 
 const email = ref('')
 const password = ref('')
-const showPassword = ref(false)
 const errorMessage = ref<string | null>(null)
 const isSubmitting = ref(false)
 
@@ -45,39 +46,10 @@ async function handleSubmit() {
       Your password has been changed. Sign in with the new one.
     </p>
 
-    <div>
-      <label for="email" class="mb-1 block text-sm text-slate-400">Email</label>
-      <input
-        id="email"
-        v-model="email"
-        type="email"
-        required
-        autocomplete="email"
-        class="w-full rounded-md border border-slate-600 bg-slate-900 px-3 py-2 text-slate-100 placeholder-slate-500 focus:border-emerald-500 focus:outline-none"
-      />
-    </div>
+    <EmailField id="email" v-model="email" />
 
-    <div>
-      <label for="password" class="mb-1 block text-sm text-slate-400">Password</label>
-      <div class="relative">
-        <input
-          id="password"
-          v-model="password"
-          :type="showPassword ? 'text' : 'password'"
-          required
-          autocomplete="current-password"
-          class="w-full rounded-md border border-slate-600 bg-slate-900 px-3 py-2 text-slate-100 placeholder-slate-500 focus:border-emerald-500 focus:outline-none"
-        />
-      
-        <button
-          type="button"
-          class="absolute top-1/2 right-2 -translate-y-1/2 text-xs text-slate-400 hover:text-slate-200"
-          @click="showPassword = !showPassword"
-        >
-          {{ showPassword ? 'Hide' : 'Show' }}
-        </button>
-      </div>
-    </div>
+    <PasswordField id="password" v-model="password" />
+
     <p v-if="errorMessage" class="text-sm text-red-400">
       {{ errorMessage }}
     </p>
