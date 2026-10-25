@@ -12,11 +12,12 @@ Thread-Pool. 69 Backend-Tests auf Unit-, Web- und Kontext-Ebene.
 Frontend: Vue 3 + TypeScript + Tailwind, Pinia-Stores für Auth und User, Login- und
 Registrierungsformular, Einstellungsseite mit drei Abschnitten, „Passwort vergessen" und
 Einlöse-Seite, Router mit Guard in beide Richtungen, Request- und Response-Interceptor mit
-Refresh und Wiederholung, 9 Vitest-Tests.
+Refresh und Wiederholung, geteilte Feldkomponenten für Benutzername, E-Mail und Passwort,
+13 Vitest-Tests.
 Im Browser nachgewiesen: CORS, HttpOnly-Cookie, SameSite, Rotation ohne Diebstahlwarnung,
 Passwortwechsel mit anschließend gültigem Refresh, vollständige Reset-Strecke über Mailtrap.
 GitHub Actions baut und testet Backend und Frontend bei jedem Pull Request.
-Als Nächstes: `refactor/form-fields`.
+Als Nächstes: `chore/integration-tests`.
 
 Diese Datei bündelt den gesamten Planungsstand als Kontext für spätere Arbeitssitzungen. Ergänzend: `naming-conventions.md` (Namenskonventionen) und das ER-Diagramm (`.drawio`).
 
@@ -327,7 +328,9 @@ frontend/src/
 ├── components/
 │   ├── auth/          (LoginForm, RegisterForm, ForgotPasswordForm, ResetPasswordForm)
 │   ├── layout/        (AppNavbar)
-│   └── settings/      (UserNameSection, PasswordSection, DeleteAccountSection)
+│   ├── settings/      (UserNameSection, PasswordSection, DeleteAccountSection)
+│   └── ui/            (FormField als Rumpf, UserNameField, EmailField,
+│                       PasswordField, __tests__/)
 ├── views/             (AuthView als Rahmen, HomeView, SettingsView)
 ├── router/            (Routen + Guard, RouteMeta-Augmentation)
 ├── stores/            (authStore.ts, userStore.ts, __tests__/)
@@ -679,6 +682,67 @@ Unit-Test — das muss der Integrationstest nachholen.
   behält die passenden (`item.auth === isAuthenticated`). *Preis:* Zum Durchklicken in der
   Entwicklung ist die ungefilterte Variante bequemer.
 
+### Geteilte Formularfelder (`refactor/form-fields`)
+
+Sieben Passwortfelder in sechs Dateien, dazu Text- und E-Mail-Felder, jedes mit eigener
+Klassenkette und eigenem Label-Markup — und den Anzeigen-Umschalter nur in zweien davon. Ersetzt
+durch vier Komponenten unter `components/ui/`.
+
+- **Der Schnitt ist fachlich, nicht technisch:** `UserNameField`, `EmailField`, `PasswordField`.
+  Die Alternative war eine einzige Komponente mit einem `type`-Prop; dafür sprach weniger
+  Dateien. Dagegen sprach, dass eine fachliche Komponente die Attribute *ihres* Feldes kennen
+  kann — `EmailField` den Typ und `maxlength=255`, `PasswordField` die 8 bis 72 aus dem DTO. Die
+  Validierungsgrenzen des Frontends liegen damit je Feld an einer Stelle und spiegeln die
+  Backend-DTOs, und die Aufrufstelle kann sie nicht mehr falsch setzen. Das war das stärkere
+  Argument.
+- **Darunter liegt *ein* gemeinsamer Rumpf, `FormField`.** Drei unabhängige Komponenten hätten
+  die Verdopplung nicht abgeschafft, sondern von sieben auf drei verringert und in die Bausteine
+  verschoben — der nächste Wechsel am Fokusring hätte wieder drei Dateien gekostet. Jetzt gilt:
+  Aussehen im Rumpf, Fachlichkeit in den Bausteinen, jede Regel genau einmal. `FormField` wird
+  nirgends direkt benutzt.
+- **Kein `type`-Prop am Rumpf.** Der Typ fällt als gewöhnliches Attribut durch, und
+  `UserNameField` setzt ihn gar nicht, weil HTML von sich aus `text` nimmt. Ein Prop mit Default
+  wäre eine Regel gewesen, die HTML schon hat.
+- **`purpose` statt einzelner Attribute.** `PasswordField` nimmt `'current'` oder `'new'` und
+  setzt daraus `minlength`, `autocomplete` und den Hinweistext **gemeinsam**. Drei einzelne Props
+  hätten erlaubt, zwei zu setzen und das dritte zu vergessen — und ein
+  `autocomplete="current-password"` an einem Feld für ein neues Passwort lässt den Browser ein
+  gespeichertes anbieten, statt eines zu erzeugen. *Nebenbei gelernt:* `autocomplete="password"`
+  ist überhaupt kein gültiger Wert. Ein unbekannter Wert wird ignoriert, das Feld verhält sich
+  also schlechter als ohne Angabe.
+- **`minlength` nur am neuen Passwort.** Am Feld für das *aktuelle* würde es nichts verhindern,
+  aber ein Konto aussperren, dessen Passwort älter als die Regel ist — weder Login noch
+  Bestätigung in den Einstellungen wären möglich. **Der Standard von `purpose` ist deshalb
+  `'current'`:** Ein vergessenes Prop am neuen Passwort kostet nur die Browser-Prüfung, das
+  Backend validiert weiter. Wäre `'new'` der Standard, sperrte ein vergessenes Prop am Login
+  Benutzer aus. Der Standard zeigt in die harmlose Richtung.
+- **Der Hinweistext gehört dem Feld, nicht der Seite.** Ein `minlength`, das man nicht sieht,
+  führt zu einem Formular, das beim Absenden ohne Erklärung blockiert. `FormField` verdrahtet den
+  Hinweis über `aria-describedby`, dessen `id` aus der Feld-`id` entsteht — damit liest ein
+  Screenreader ihn *zum Feld* und nicht als losen Text daneben.
+- **`id` bleibt verpflichtend, und Komponentengrenzen kapseln es nicht.** Vue kapselt Styles und
+  Zustand, nicht das DOM. Die Einstellungsseite rendert drei Abschnitte mit vier Passwortfeldern
+  gleichzeitig in *ein* Dokument; viermal `id="password"` heißt, dass jedes `<label for>` auf das
+  erste zeigt. Und seit der Hinweis seine `id` aus der Feld-`id` ableitet, zeigt bei Doppelung
+  auch `aria-describedby` aufs falsche Feld. Vergeben sind deshalb `settings-username`,
+  `settings-username-password`, `settings-current-password`, `settings-new-password` und
+  `settings-delete-password`. Nachprüfen lässt sich das mit einem Klick aufs Label: Springt der
+  Cursor ins zugehörige Feld, sind die `id` eindeutig.
+
+**Die Lektion dieser Branch:** Alle vier Fehler auf dem Weg waren **Auslassungen an der
+Aufrufstelle** — fehlende Komponenten-Imports, fehlendes `purpose` in der Registrierung,
+fehlendes `label` auf der Einlöse-Seite, ein `v-model` auf ein Ref, das es nicht gab. Das ist der
+Preis dafür, Attribute in die Komponente zu ziehen: Die Aufrufstelle wird kurz, und was fehlt,
+erzeugt keinen Fehler, sondern ein stilles Weniger. Gefunden hat sie nicht ein Test, sondern das
+gruppenweise Durchklicken — deshalb pro Gruppe ein Commit und ein Blick in den Browser, statt
+alle sieben Formulare in einem Rutsch.
+
+**Was der Test gefunden hat:** `PasswordField.spec.ts` lief beim ersten Durchlauf rot, weil
+`aria-describedby` nie am Input ankam — die Ergänzung in `FormField` war als Ausschnitt geliefert
+worden und beim Einbauen untergegangen. Der Test behauptete also nichts Falsches, sondern zeigte
+eine echte Lücke. Der anschließende absichtliche Bruch (`minlength` fest auf 8) hat bestätigt,
+dass er die richtige Seite der Verzweigung beobachtet.
+
 ### Fehlerformat & Konfiguration
 
 - **Einheitliches Fehlerformat `ProblemDetail`** (RFC-Standard, seit Spring 6 mitgeliefert)
@@ -830,19 +894,16 @@ Branch die Änderung nicht.
 
 ### Nächste Branches
 
-*Erledigt: `refactor/async-mail` — Entscheidungen und Nachweis in Abschnitt 8.*
+*Erledigt: `refactor/async-mail` und `refactor/form-fields` — Entscheidungen und Nachweis in
+Abschnitt 8.*
 
-1. **`refactor/form-fields`** — ein gemeinsamer Formularbaustein für Text-, E-Mail- und
-   Passwortfelder. Das Passwortfeld mit Anzeigen-Umschalter kommt inzwischen siebenmal in sechs
-   Dateien vor; bei dieser Zahl lohnt sich das Herausziehen. Die Namensfrage
-   (`PasswordInput` gegen ein allgemeineres `FormField`) ist offen.
-2. **`chore/integration-tests`** — die vertagten Test-Lücken (siehe unten) plus der
+1. **`chore/integration-tests`** — die vertagten Test-Lücken (siehe unten) plus der
    Integrationstest mit Testcontainers.
-3. **MVP-Schritt 2: Projekte.**
+2. **MVP-Schritt 2: Projekte.**
 
 ### Testabdeckung
 
-78 Tests (69 Backend, 9 Frontend), alle Sicherheitsentscheidungen maschinell abgesichert:
+82 Tests (69 Backend, 13 Frontend), alle Sicherheitsentscheidungen maschinell abgesichert:
 
 | Klasse | Tests | Ebene | Kernaussagen |
 |---|---|---|---|
@@ -857,6 +918,7 @@ Branch die Änderung nicht.
 | `BackendApplicationTests` | 1 | Kontext (BE) | Der vollständige Kontext startet — also ist jede Bean verdrahtet und die Fail-Fast-Konfiguration vollständig mit Werten versorgt |
 | `interceptors.spec.ts` | 3 | Unit (FE) | Ein Refresh bei parallelen 401ern, kein Refresh ohne Not, geordneter Abgang bei Fehlschlag |
 | `userStore.spec.ts` | 6 | Unit (FE) | Antworten werden übernommen statt nachgeladen, neuer Token landet im `authStore`, Löschen leert Profil *und* Sitzung |
+| `PasswordField.spec.ts` | 4 | Unit (FE) | Umschalter wechselt den Typ, Modell läuft über zwei Ebenen durch, Längenregel und `autocomplete` hängen an `purpose` — beide Seiten geprüft |
 
 **Werkzeuge Backend:** Mockito nur dort, wo eine Abhängigkeit Verhalten hat — reine Datenhalter
 mit `new`, was bedeutet, dass der Prüfling von Hand konstruiert wird. `ArgumentCaptor`, um zu
@@ -889,8 +951,13 @@ Grün eine Aussage.
   erledigen, zusammen mit dem Fall „kein `@Transactional` am Service" — dann müsste gar keine
   Mail rausgehen.
 - **Komponententest für die Einstellungsabschnitte** — fertig geschrieben, dann zurückgestellt:
-  Er hängt am Markup, und die Oberfläche war in Bewegung. Nach der Aufteilung in drei
-  Komponenten ist er leichter zu schreiben.
+  Er hängt am Markup, und die Oberfläche war in Bewegung. Nach der Aufteilung in drei Komponenten
+  ist er leichter zu schreiben, und seit `refactor/form-fields` auch stabiler: Das Markup der
+  Felder liegt in `FormField`, die Abschnitte halten nur noch Überschrift, Knopf und Meldungen.
+- **`FormField`, `EmailField` und `UserNameField` sind ungetestet** — sie enthalten keine
+  Verzweigung, nur Deklarationen. Geprüft wird sie indirekt über `PasswordField.spec.ts`, das
+  durch beide Ebenen hindurch arbeitet. Ein eigener Test würde dort Markup festnageln, ohne eine
+  Aussage zu gewinnen.
 - **Frontend sonst:** Die zwei Reset-Komponenten und die Reset-Actions im `authStore` sind
   ungetestet. Die Actions sind je ein `client.post` ohne Logik — ein Test würde nur prüfen, dass
   Axios gerufen wird. Playwright ist eingerichtet und ungenutzt; ein Ende-zu-Ende-Test
@@ -909,6 +976,11 @@ Grün eine Aussage.
   `refresh_token` und `password_reset_token`. Erst dann lohnt sich ein Index auf `expires_at`.
 - **Echter E-Mail-Anbieter:** eigene Domain mit SPF-, DKIM- und DMARC-Einträgen. Am Code ändert
   der Wechsel nichts (SMTP bleibt SMTP), die DNS-Arbeit ist der eigentliche Aufwand.
+- **„30 minutes" steht fest im Markup.** Die Laufzeit des Reset-Tokens ist über
+  `handout-manager.password-reset.token-ttl` konfigurierbar, der Text in `ForgotPasswordForm`
+  nennt sie aber als Zahl. Wird die Laufzeit geändert, lügt die Oberfläche. Saubere Lösung wäre,
+  die Dauer vom Server mitzuliefern — für eine Zeile Text unverhältnismäßig, deshalb notiert
+  statt behoben.
 - **HTML-Mails:** `SimpleMailMessage` liefert reinen Text. Für gestaltete Mails bräuchte es
   `MimeMessage` und einen Template-Mechanismus — lohnt erst bei mehreren Mail-Arten.
 - **`reason`-Spalte für `password_reset_token`**, falls die Doppelbedeutung von `used_at`

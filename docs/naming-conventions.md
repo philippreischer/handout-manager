@@ -1,6 +1,6 @@
 # handout-manager — Naming Conventions Cheatsheet
 
-**v0.8 · in Verwendung**
+**v0.9 · in Verwendung**
 
 Analog zum A11yForge-Cheatsheet. Generische Konventionen übernommen, Domänen-Glossar neu auf dieses Projekt gemünzt.
 
@@ -139,7 +139,7 @@ hält.
 |---|---|---|
 | Komponenten-Datei | PascalCase.vue | `ResourceList.vue` |
 | Komponenten-Tag | PascalCase | `<ResourceList />` |
-| Unterordner in `components/` | nach Rolle, lowercase | `components/auth/`, `components/layout/`, `components/settings/` |
+| Unterordner in `components/` | nach Rolle, lowercase | `components/auth/`, `components/layout/`, `components/settings/`, `components/ui/` |
 | Composable | `use` + camelCase | `usePermissions()` |
 | Pinia-Store — Export | `use…Store` | `useAuthStore` |
 | Pinia-Store — Datei | `<bereich>Store.ts` | `authStore.ts`, `userStore.ts` |
@@ -170,8 +170,30 @@ hält.
   Zustände — `password`, `isSubmitting`, `errorMessage` — statt ein halbes Dutzend mit
   Präfixen (`passwordLoading`, `userNameLoading`) in einer Datei.
 - **`id`-Attribute bleiben seitenweit eindeutig**, auch wenn die Formulare in verschiedenen
-  Dateien liegen. Zweimal dasselbe `id` auf einer Seite, und das `for` eines Labels zeigt auf
-  das falsche Feld — beim Klicken kaum zu merken, bei Screenreadern sofort.
+  Dateien liegen. Vue kapselt Styles und Zustand, **nicht das DOM** — eine eigene Komponente
+  schafft also keinen eigenen Namensraum für `id`. Zweimal dasselbe `id` auf einer Seite, und das
+  `for` eines Labels zeigt auf das falsche Feld; dasselbe gilt für jede `aria`-Referenz, die aus
+  der `id` abgeleitet wird. Beim Klicken kaum zu merken, bei Screenreadern sofort. Prüfen lässt
+  sich es mit einem Klick aufs Label: Springt der Cursor ins zugehörige Feld, passt es.
+- **Geteilte Feldkomponenten: Aussehen unten, Fachlichkeit oben.** Ein Rumpf (`FormField`) hält
+  Label, Input, Klassen und die `aria`-Verdrahtung; darüber liegen fachliche Bausteine
+  (`EmailField`, `PasswordField`, `UserNameField`), die nur die Attribute *ihres* Feldes setzen —
+  Typ, `autocomplete`, Längen nach dem Backend-DTO. Der Rumpf wird nie direkt benutzt. Mehrere
+  unabhängige Feldkomponenten ohne Rumpf verschieben die Verdopplung nur.
+- **Attribute, die nicht auseinanderlaufen dürfen, bekommen *ein* Prop.** `purpose="new"` setzt
+  an `PasswordField` `minlength`, `autocomplete` und den Hinweistext gemeinsam; drei einzelne
+  Props erlaubten, zwei zu setzen und das dritte zu vergessen. **Und der Standard zeigt dorthin,
+  wo ein Vergessen harmlos bleibt** — bei `purpose` ist das `'current'`, weil ein fehlendes Prop
+  dann nur die Browser-Prüfung kostet, während der umgekehrte Standard Benutzer am Login
+  aussperren würde.
+- **Ein Hinweistext unter einem Feld wird über `aria-describedby` an den Input gebunden**, mit
+  einer `id`, die aus der Feld-`id` entsteht. Loser Text daneben wird von einem Screenreader
+  nicht zum Feld gelesen. Und wo eine Längenregel im Markup steht, gehört eine sichtbare
+  Erklärung dazu: Sonst blockiert das Formular beim Absenden ohne Begründung.
+- **Was an der Aufrufstelle fehlt, wird nicht rot.** Attribute in eine Komponente zu ziehen macht
+  den Aufruf kurz — ein vergessener Import, ein vergessenes `purpose`, ein vergessenes `label`
+  erzeugen keinen Fehler, sondern ein stilles Weniger. Beim Umstellen mehrerer Formulare deshalb
+  **gruppenweise** vorgehen: ein Commit und ein Blick in den Browser je Gruppe.
 - Komponenten-Namen **mehrteilig** (Vue-Style-Guide) — `BaseButton`, nicht `Button`.
 - **`api/`-Dateien:** `httpClient.ts` (die Axios-Instanz), `interceptors.ts` (exportiert
   `setupInterceptors()`, aufgerufen aus `main.ts`), `errorMessage.ts` (`ProblemDetail` → Text
@@ -426,6 +448,16 @@ POST   /api/resources/{resourceId}/permissions
 - **`flushPromises()` nach jedem ausgelösten Event**, das eine `async`-Funktion anstößt. Der
   Test ist schneller als das `await`; ohne diese Zeile prüft man einen Zustand, der noch nicht
   eingetreten ist. Häufigster Grund für scheinbar grundlos rote Tests.
+- **Nach einer Interaktion das Element neu abfragen**, statt eine Referenz aus der Zeile davor
+  weiterzubenutzen. `wrapper.get('input')` nach jedem Klick kostet nichts und macht die Aussage
+  unabhängig davon, ob Vue dasselbe DOM-Element patcht oder ein neues erzeugt.
+- **Bei einer Verzweigung immer beide Seiten prüfen.** Ein Test, der nur `purpose="new"`
+  kontrolliert, ist auch grün, wenn das Prop überhaupt nicht ausgewertet wird. Erst der zweite
+  Test — dieselben Attribute müssen *fehlen* — belegt, dass die Bedingung wirkt.
+- **Ein Modell, das über zwei Komponenten läuft, wird einmal durchgemessen.** Bei einem
+  fachlichen Feld über einem gemeinsamen Rumpf geht `update:modelValue` durch zwei `defineModel`
+  hindurch; bricht die Durchreiche, nimmt das Feld Eingaben an und das Formular schickt einen
+  leeren String — ohne Fehlermeldung irgendwo.
 - **`setValue` statt `element.value = …`** — es löst zusätzlich das Event aus, das `v-model`
   braucht.
 - **jsdom erzwingt `required` und `minlength` nicht** bei einem direkt ausgelösten
@@ -475,7 +507,11 @@ Reihenfolge der Arbeit — Backend, Tests, Frontend, Aufteilung —, und genau d
 man sich später ansieht. Squash lohnt bei Branches aus vielen „fix typo"-Commits; die gibt es
 hier nicht.
 
-Gültige Scopes: `auth`, `user`, `project`, `membership`, `resource`, `permission`, `security`, `email`, `settings`, `home`, `config`, `github`, `ui`, `theme`, `db`.
+Gültige Scopes: `auth`, `user`, `project`, `membership`, `resource`, `permission`, `security`, `email`, `settings`, `home`, `config`, `github`, `ui`, `frontend`, `theme`, `db`.
+
+**`frontend` nur für Querschnittliches**, das keinem Bereich zuzuordnen ist — ein
+Prettier-Durchlauf über mehrere Ordner, ein Werkzeug-Wechsel. Betrifft eine Änderung einen
+Bereich, trägt sie dessen Scope.
 
 **`ui` vs. Feature-Scope:** Was zu einem Anwendungsfall gehört, trägt dessen Scope — ein
 Login-Formular ist `auth`, nicht `ui`. `ui` ist für anwendungsweite Oberfläche ohne fachliche
@@ -483,4 +519,4 @@ Zugehörigkeit: Layout, Navigation, `App.vue`, geteilte Formularbausteine.
 
 ---
 
-*handout-manager · Naming Conventions · v0.8*
+*handout-manager · Naming Conventions · v0.9*
