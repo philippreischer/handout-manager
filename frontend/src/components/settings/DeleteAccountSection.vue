@@ -3,12 +3,12 @@ import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useUserStore } from '@/stores/userStore'
 import { extractErrorMessage } from '@/api/errorMessage'
+import PasswordField from '@/components/ui/PasswordField.vue'
 
 const router = useRouter()
 const userStore = useUserStore()
 
 const password = ref('')
-const showPassword = ref(false)
 const isSubmitting = ref(false)
 const errorMessage = ref<string | null>(null)
 
@@ -18,7 +18,7 @@ async function handleSubmit() {
 
   try {
     await userStore.deleteAccount(password.value)
-    
+
     await router.push({ name: 'login', query: { deleted: '1' } })
   } catch (error) {
     errorMessage.value = extractErrorMessage(error, 'Could not delete account.')
@@ -36,28 +36,7 @@ async function handleSubmit() {
     </p>
 
     <form class="space-y-4" @submit.prevent="handleSubmit">
-      <div>
-        <label for="delete-password" class="mb-1 block text-sm text-slate-400">
-          Current password
-        </label>
-        <div class="relative">
-          <input
-            id="delete-password"
-            v-model="password"
-            :type="showPassword ? 'text' : 'password'"
-            required
-            autocomplete="current-password"
-            class="w-full rounded-md border border-slate-600 bg-slate-900 px-3 py-2 pr-16 text-slate-100 focus:border-emerald-500 focus:outline-none"
-          />
-          <button
-            type="button"
-            class="absolute top-1/2 right-2 -translate-y-1/2 text-xs text-slate-400 hover:text-slate-200"
-            @click="showPassword = !showPassword"
-          >
-            {{ showPassword ? 'Hide' : 'Show' }}
-          </button>
-        </div>
-      </div>
+      <PasswordField id="settings-delete-password" v-model="password" />
 
       <p v-if="errorMessage" class="text-sm text-red-400">{{ errorMessage }}</p>
 

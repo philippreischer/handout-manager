@@ -68,6 +68,6 @@ export const useAuthStore = defineStore('auth', () => {
     setAccessToken,
     clearSession,
     requestPasswordReset,
-    confirmPasswordReset
+    confirmPasswordReset,
   }
 })

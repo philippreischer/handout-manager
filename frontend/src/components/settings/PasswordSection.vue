@@ -2,12 +2,12 @@
 import { ref } from 'vue'
 import { useUserStore } from '@/stores/userStore'
 import { extractErrorMessage } from '@/api/errorMessage'
+import PasswordField from '@/components/ui/PasswordField.vue'
 
 const userStore = useUserStore()
 
 const password = ref('')
 const newPassword = ref('')
-const showPasswords = ref(false)
 const isSubmitting = ref(false)
 const errorMessage = ref<string | null>(null)
 const isChanged = ref(false)
@@ -35,45 +35,14 @@ async function handleSubmit() {
     <h2 class="mb-4 text-lg font-semibold text-slate-100">Password</h2>
 
     <form class="space-y-4" @submit.prevent="handleSubmit">
-      <div>
-        <label for="current-password" class="mb-1 block text-sm text-slate-400">
-          Current password
-        </label>
-        <input
-          id="current-password"
-          v-model="password"
-          :type="showPasswords ? 'text' : 'password'"
-          required
-          autocomplete="current-password"
-          class="w-full rounded-md border border-slate-600 bg-slate-900 px-3 py-2 text-slate-100 focus:border-emerald-500 focus:outline-none"
-        />
-      </div>
+      <PasswordField id="settings-current-password" v-model="password" />
 
-      <div>
-        <label for="new-password" class="mb-1 block text-sm text-slate-400">
-          New password
-        </label>
-        <div class="relative">
-          <input
-            id="new-password"
-            v-model="newPassword"
-            :type="showPasswords ? 'text' : 'password'"
-            required
-            minlength="8"
-            maxlength="72"
-            autocomplete="new-password"
-            class="w-full rounded-md border border-slate-600 bg-slate-900 px-3 py-2 pr-16 text-slate-100 focus:border-emerald-500 focus:outline-none"
-          />
-        
-          <button
-            type="button"
-            class="absolute top-1/2 right-2 -translate-y-1/2 text-xs text-slate-400 hover:text-slate-200"
-            @click="showPasswords = !showPasswords"
-          >
-            {{ showPasswords ? 'Hide' : 'Show' }}
-          </button>
-        </div>
-      </div>
+      <PasswordField
+        id="settings-new-password"
+        label="New password"
+        v-model="newPassword"
+        purpose="new"
+      />
 
       <p v-if="errorMessage" class="text-sm text-red-400">{{ errorMessage }}</p>
       <p v-else-if="isChanged" class="text-sm text-emerald-400">

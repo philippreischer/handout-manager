@@ -3,6 +3,9 @@ import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/authStore'
 import { extractErrorMessage } from '@/api/errorMessage'
+import UserNameField from '@/components/ui/UserNameField.vue'
+import EmailField from '@/components/ui/EmailField.vue'
+import PasswordField from '@/components/ui/PasswordField.vue'
 
 const router = useRouter()
 const authStore = useAuthStore()
@@ -10,7 +13,6 @@ const authStore = useAuthStore()
 const email = ref('')
 const password = ref('')
 const userName = ref('')
-const showPassword = ref(false)
 const errorMessage = ref<string | null>(null)
 const isSubmitting = ref(false)
 
@@ -34,50 +36,11 @@ async function handleSubmit() {
   <form class="space-y-5" @submit.prevent="handleSubmit">
     <h2 class="text-lg font-semibold text-slate-200">Create account</h2>
 
-    <div>
-      <label for="userName" class="mb-1 block text-sm text-slate-400">Username</label>
-      <input
-        id="userName"
-        v-model="userName"
-        type="text"
-        required
-        autocomplete="username"
-        class="w-full rounded-md border border-slate-600 bg-slate-900 px-3 py-2 text-slate-100 placeholder-slate-500 focus:border-emerald-500 focus:outline-none"
-      />
-    </div>
+    <UserNameField id="username" v-model="userName" />
 
-    <div>
-      <label for="registerEmail" class="mb-1 block text-sm text-slate-400">Email</label>
-      <input
-        id="registerEmail"
-        v-model="email"
-        type="email"
-        required
-        autocomplete="email"
-        class="w-full rounded-md border border-slate-600 bg-slate-900 px-3 py-2 text-slate-100 placeholder-slate-500 focus:border-emerald-500 focus:outline-none"
-      />
-    </div>
+    <EmailField id="email" v-model="email" />
 
-    <div class="relative">
-      <label for="registerPassword" class="mb-1 block text-sm text-slate-400"> Password </label>
-      <input
-        id="registerPassword"
-        v-model="password"
-        :type="showPassword ? 'text' : 'password'"
-        required
-        minlength="8"
-        autocomplete="new-password"
-        class="w-full rounded-md border border-slate-600 bg-slate-900 px-3 py-2 text-slate-100 placeholder-slate-500 focus:border-emerald-500 focus:outline-none"
-      />
-      <button
-            type="button"
-            class="absolute top-1/2 right-2 -translate-y-1/2 text-xs text-slate-400 hover:text-slate-200"
-            @click="showPassword = !showPassword"
-          >
-            {{ showPassword ? 'Hide' : 'Show' }}
-          </button>
-      <p class="mt-1 text-xs text-slate-500">At least 8 characters.</p>
-    </div>
+    <PasswordField id="password" v-model="password" purpose="new" />
 
     <p v-if="errorMessage" class="text-sm text-red-400">
       {{ errorMessage }}
