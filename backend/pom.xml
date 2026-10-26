@@ -20,6 +20,12 @@
 		<!-- Single source of truth: jjwt-api, jjwt-impl and jjwt-jackson must always
              share the same version. Mixed versions fail at runtime, not at compile time. -->
 		<jjwt.version>0.13.0</jjwt.version>
+		<!-- Test-only values. Never used outside tests; they only need to exist so
+             placeholder resolution succeeds. Declared here because surefire and
+             failsafe both need them and must not drift apart. -->
+		<test.jwt.secret>dGVzdC1vbmx5LXNlY3JldC1ub3QtZm9yLXByb2QtMzI=</test.jwt.secret>
+		<test.mail.username>test-only</test.mail.username>
+		<test.mail.password>test-only</test.mail.password>
 	</properties>
 
 	<dependencies>
@@ -136,18 +142,41 @@
 				<groupId>org.springframework.boot</groupId>
 				<artifactId>spring-boot-maven-plugin</artifactId>
 			</plugin>
+			<!-- Runs *Test: the fast unit and web-layer tests. -->
 			<plugin>
 				<groupId>org.apache.maven.plugins</groupId>
 				<artifactId>maven-surefire-plugin</artifactId>
 				<configuration>
 					<environmentVariables>
-						<!-- Test-only values. Never used outside tests; they only need to
-                             exist so placeholder resolution succeeds. -->
-						<JWT_SECRET>dGVzdC1vbmx5LXNlY3JldC1ub3QtZm9yLXByb2QtMzI=</JWT_SECRET>
-						<MAIL_USERNAME>test-only</MAIL_USERNAME>
-						<MAIL_PASSWORD>test-only</MAIL_PASSWORD>
+						<JWT_SECRET>${test.jwt.secret}</JWT_SECRET>
+						<MAIL_USERNAME>${test.mail.username}</MAIL_USERNAME>
+						<MAIL_PASSWORD>${test.mail.password}</MAIL_PASSWORD>
 					</environmentVariables>
 				</configuration>
+			</plugin>
+			<!-- Runs *IT: the slow Testcontainers tests, only on mvnw verify. -->
+			<plugin>
+				<groupId>org.apache.maven.plugins</groupId>
+				<artifactId>maven-failsafe-plugin</artifactId>
+				<configuration>
+					<environmentVariables>
+						<JWT_SECRET>${test.jwt.secret}</JWT_SECRET>
+						<MAIL_USERNAME>${test.mail.username}</MAIL_USERNAME>
+						<MAIL_PASSWORD>${test.mail.password}</MAIL_PASSWORD>
+					</environmentVariables>
+				</configuration>
+				<executions>
+					<execution>
+						<!-- Both goals are required. integration-test only records failures
+						     so that cleanup can still run; it is verify that fails the
+						     build. Bind only the first and the pipeline stays green over
+						     red integration tests. -->
+						<goals>
+							<goal>integration-test</goal>
+							<goal>verify</goal>
+						</goals>
+					</execution>
+				</executions>
 			</plugin>
 		</plugins>
 	</build>
