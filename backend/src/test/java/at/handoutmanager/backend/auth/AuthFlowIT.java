@@ -18,8 +18,6 @@ class AuthFlowIT extends AbstractIntegrationTest {
     private static final String PASSWORD = "secret1234";
     private static final String USER_NAME = "Max";
 
-    // Package-private, not private: Jackson has to reach the canonical constructor.
-    record TokenResponse(String accessToken) {}
 
     @Test
     void shouldIssueAnAccessTokenAndARefreshCookie_whenLoggingIn() {

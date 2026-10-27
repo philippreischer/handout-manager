@@ -33,7 +33,7 @@ public abstract class AbstractIntegrationTest {
     protected TestRestTemplate restTemplate;
 
     @Autowired
-    private JdbcTemplate jdbcTemplate;
+    protected JdbcTemplate jdbcTemplate;
 
     /**
      * Emptied before each test, not after: a failed test leaves its rows behind for
@@ -61,4 +61,9 @@ public abstract class AbstractIntegrationTest {
 
         return headers;
     }
+
+    // Only the wire shape the tests need, deliberately not the production DTO: a
+    // test that deserialises with the same class the server serialises with would
+    // not notice a renamed JSON field.
+    public record TokenResponse(String accessToken) {}
 }
