@@ -1,6 +1,6 @@
 # handout-manager — Naming Conventions Cheatsheet
 
-**v0.9 · in Verwendung**
+**v1.0 · in Verwendung**
 
 Analog zum A11yForge-Cheatsheet. Generische Konventionen übernommen, Domänen-Glossar neu auf dieses Projekt gemünzt.
 
@@ -92,6 +92,13 @@ Merke: **Handout** und **Note** sind *Werte* von `ResourceType`, keine eigenen E
   Fassung gibt *alle* Felder aus; eine einzige Debug-Zeile schreibt damit ein Token, das in der
   Datenbank nur als Hash liegt, im Klartext ins Log. Gilt für alles, was ein Nachweis ist —
   Tokens, Links mit Token, Passwörter. Eine E-Mail-Adresse ist keiner und darf drinbleiben.
+- **`@Size` braucht `@NotBlank` daneben.** Jakarta Validation prüft eine Größe nur, wenn ein
+  Wert vorhanden ist — `null` kommt durch jedes `@Size` und `@Min`. Wo ein Wert verpflichtend
+  *und* begrenzt ist, stehen beide Annotationen.
+- **Importpfade von Spring-Klassen unter Boot 4 nachsehen, nicht aus dem Gedächtnis schreiben.**
+  Boot 4 hat Autokonfiguration und Testunterstützung in eigene Module umsortiert; die Pfade aus
+  Boot-3-Beispielen im Netz stimmen nicht mehr, und die IDE bietet teils ähnlich benannte Pakete
+  an, die etwas anderes sind. Beispiele in der Planungsdatei, Abschnitt CI.
 - **DTOs:** Suffix `Request` / `Response` **+ `DTO`** — `ProjectCreateRequestDTO`, `ResourceResponseDTO`, `LoginRequestDTO`, `LoginResponseDTO`.
   DTOs leben auf der **Controller-Ebene**, nicht im Service: Ein Service nimmt Parameter
   entgegen, damit seine Signatur nicht von der HTTP-API abhängt. Braucht ein Service ein
@@ -343,6 +350,7 @@ POST   /api/resources/{resourceId}/permissions
 | JUnit 5 — Methode | `should<Outcome>_when<Condition>()` | `shouldDenyAccess_whenNoPermissionExists()` |
 | Test-Klasse | `<ClassUnderTest>Test` | `ResourceServiceTest` |
 | Integration-Test | `<…>IT` | `ResourceControllerIT` |
+| Basisklasse für Tests | `Abstract<…>Test`, `public` | `AbstractIntegrationTest` |
 | Vitest — describe | `describe('ResourceList', …)` | |
 | Vitest — it | `it('renders only visible resources', …)` | |
 | Test-Datei (FE) | `ResourceList.spec.ts` | |
@@ -416,6 +424,34 @@ POST   /api/resources/{resourceId}/permissions
   über eine Test-`application.properties`. Properties, die nur im Profil `local` stehen, über
   `@SpringBootTest(properties = …)` an der Testklasse: Ein Test ohne aktives Profil sieht die
   Profildatei nicht. Begründung und Diagnose: Planungsdatei, Abschnitt CI.
+- **`*Test` läuft in Surefire, `*IT` in Failsafe** — `mvnw test` nur die schnellen, `mvnw verify`
+  beide. Failsafe braucht **beide** Goals (`integration-test` *und* `verify`); mit nur dem ersten
+  bleibt die Pipeline grün über roten Tests.
+- **Alle Integrationstests teilen *eine* Konfiguration**, und die steht in der Basisklasse.
+  Spring hält einen Kontext pro unterschiedlicher Testkonfiguration, und an jedem Kontext hängt
+  ein eigener Datenbank-Container: Eine zusätzliche Property oder ein `@MockitoBean` in einer
+  Unterklasse verdoppelt die Startzeit der ganzen Suite. Auch ein Mock, den nur *ein* Test
+  braucht, gehört deshalb nach oben.
+- **Aufgeräumt wird vor dem Test, mit `TRUNCATE <wurzeltabelle> CASCADE`.** `@Transactional` am
+  Test hilft bei `RANDOM_PORT` nicht: Der Server läuft in einem eigenen Thread mit eigener
+  Verbindung, außerhalb der Transaktion des Tests. Vor und nicht nach dem Test, damit ein
+  gescheiterter Test seine Zeilen zum Nachsehen stehen lässt.
+- **`RANDOM_PORT` statt `MockMvc`, wenn die Servlet-Ebene Teil der Aussage ist.** Filter-
+  Registrierung, Reihenfolge der Kette, Cookie-Verhalten eines echten Containers — das sieht
+  `MockMvc` nicht. Sonst ist `MockMvc` schneller und genügt.
+- **Antworten auf dem Draht prüfen, nicht über das Produktions-DTO.** Ein Test, der mit derselben
+  Klasse deserialisiert, mit der der Server serialisiert, merkt ein umbenanntes JSON-Feld nicht —
+  beide Seiten wären sich einig. Request-Bodies als `Map`, Antworten als Text oder als kleiner
+  Record, der nur die gebrauchte Form beschreibt.
+- **Für Asynchrones `verify(mock, timeout(…))`.** Ein gewöhnliches `verify` scheitert, weil der
+  Aufruf noch nicht passiert ist, wenn die Antwort da ist. Das Warten *ist* der Nachweis, dass
+  die Arbeit auf einem anderen Thread gelandet ist.
+- **Bei einer Grenze den Grenzwert prüfen, nicht einen beliebigen Falschwert.** 43 Zeichen gegen
+  44 belegt, dass die Grenze dort liegt; „viel zu kurz" wäre auch grün, wenn sie bei 32 läge.
+- **Bei `@ConfigurationProperties`-Validierung steht der Feldname in der *Ursache*.** Die oberste
+  Meldung nennt nur den Präfix — also `getFailure().rootCause()` statt `getFailure()`. Und die
+  Standard-Meldung einer Constraint-Annotation folgt der JVM-Sprache: Prüfe entweder nicht
+  übersetzten Text (`on field 'secret'`) oder den eigenen `message`-Wert.
 
 ### Frontend-Tests — Werkzeuge
 
@@ -519,4 +555,4 @@ Zugehörigkeit: Layout, Navigation, `App.vue`, geteilte Formularbausteine.
 
 ---
 
-*handout-manager · Naming Conventions · v0.9*
+*handout-manager · Naming Conventions · v1.0*

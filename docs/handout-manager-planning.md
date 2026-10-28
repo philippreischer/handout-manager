@@ -8,7 +8,8 @@ Rotation, Logout, JWT-Filter, einheitliches Fehlerformat (`ProblemDetail`), prof
 Cookie- und CORS-Konfiguration. Benutzerverwaltung: Profil lesen, Benutzername und Passwort
 ändern, Konto löschen — jeweils mit Passwortbestätigung. Passwort-Reset per E-Mail über
 Mailtrap, mit einmalig verwendbarem Token; der Versand läuft nach dem Commit in einem eigenen
-Thread-Pool. 69 Backend-Tests auf Unit-, Web- und Kontext-Ebene.
+Thread-Pool. Im Backend 72 Tests auf Unit-, Web- und Kontext-Ebene, dazu 8 Integrationstests
+gegen eine echte PostgreSQL-Instanz über Testcontainers.
 Frontend: Vue 3 + TypeScript + Tailwind, Pinia-Stores für Auth und User, Login- und
 Registrierungsformular, Einstellungsseite mit drei Abschnitten, „Passwort vergessen" und
 Einlöse-Seite, Router mit Guard in beide Richtungen, Request- und Response-Interceptor mit
@@ -17,7 +18,7 @@ Refresh und Wiederholung, geteilte Feldkomponenten für Benutzername, E-Mail und
 Im Browser nachgewiesen: CORS, HttpOnly-Cookie, SameSite, Rotation ohne Diebstahlwarnung,
 Passwortwechsel mit anschließend gültigem Refresh, vollständige Reset-Strecke über Mailtrap.
 GitHub Actions baut und testet Backend und Frontend bei jedem Pull Request.
-Als Nächstes: `chore/integration-tests`.
+Als Nächstes: `chore/validation-tests`.
 
 Diese Datei bündelt den gesamten Planungsstand als Kontext für spätere Arbeitssitzungen. Ergänzend: `naming-conventions.md` (Namenskonventionen) und das ER-Diagramm (`.drawio`).
 
@@ -813,6 +814,101 @@ dass er die richtige Seite der Verzweigung beobachtet.
   das Cookie dagegen nicht; ein `@CookieValue` dort wäre nie gefüllt. *Im Browser nachgewiesen:*
   Nach einem Passwortwechsel auf der Einstellungsseite funktioniert der nächste Refresh.
 
+### Integrationstests (`chore/integration-tests`)
+
+Vier vertagte Lücken auf einmal geschlossen: Datenbankschicht, Kaskade beim Kontolöschen, der
+Nachweis für `AFTER_COMMIT` und `@Async`, und die `JwtProperties`-Validierung.
+
+**Schnelle und langsame Tests laufen getrennt.** Surefire führt `*Test` aus, Failsafe `*IT`.
+`./mvnw test` bleibt damit die enge Schleife beim Entwickeln, `./mvnw verify` prüft alles. Die
+Namenskonvention dafür stand schon im Cheatsheet, nur das Plugin fehlte.
+
+- **Failsafe braucht *beide* Goals**, `integration-test` und `verify`. Das erste führt nur aus
+  und schreibt Fehler weg, damit danach noch aufgeräumt werden kann; erst `verify` bricht den
+  Build. Wer nur das erste einhängt, hat eine grüne Pipeline über roten Tests.
+- **Die Testwerte für die Umgebungsvariablen stehen in `<properties>`**, nicht zweimal in den
+  zwei Plugin-Blöcken. Liefen sie auseinander, scheiterte der Integrationstest an einem
+  Kontextfehler, der über die Ursache nichts sagt.
+- **Die CI brauchte keine Änderung** — der Backend-Job rief von Anfang an `verify` auf.
+
+**Eine gemeinsame Basisklasse, `AbstractIntegrationTest`.** Sie hält die Annotationen, den
+`TestRestTemplate`, den `JdbcTemplate`, den gemockten `EmailSender` und die Cookie-Übergabe.
+
+- **Der Grund ist Kontext-Caching.** Spring hält einen Kontext pro *unterschiedlicher*
+  Testkonfiguration, und an jedem Kontext hängt über `@ServiceConnection` ein eigener
+  Datenbank-Container. Eine zusätzliche Property oder ein `@MockitoBean` in einer Unterklasse
+  startet damit einen zweiten Kontext und einen zweiten Container. Deshalb steht beides in der
+  Basisklasse — auch der Mail-Mock, den nur ein Test braucht.
+- **Die Klasse ist `public`**, anders als die übrigen Testklassen: Die Integrationstests liegen
+  bei dem, was sie prüfen (`auth`, `user`), und eine package-private Basisklasse im Basispaket
+  wäre von dort nicht sichtbar.
+- **Aufgeräumt wird mit `TRUNCATE user_account CASCADE` vor jedem Test.** `@Transactional` am
+  Test wirkt hier *nicht*: Bei `RANDOM_PORT` läuft der Server in einem eigenen Thread mit eigener
+  Verbindung, die Transaktion des Tests umfasst ihn nicht. Vor dem Test statt danach, damit ein
+  gescheiterter Test seine Zeilen zum Nachsehen stehen lässt. `CASCADE` ab `user_account`
+  erwischt jede Tabelle mit Fremdschlüssel dorthin und bleibt damit richtig, wenn `project` und
+  `resource` dazukommen.
+- **Das Refresh-Cookie wird von Hand weitergegeben**, und dabei muss alles hinter dem ersten
+  Semikolon weg: Das sind `Set-Cookie`-Attribute (`Path`, `HttpOnly`, `SameSite`), und ein
+  `Cookie`-Header darf nur das Namens-Wert-Paar tragen. Sonst schickt der Test `Path=/api/auth`
+  als zweites Cookie mit.
+
+**`RANDOM_PORT` mit `TestRestTemplate` statt `MockMvc`** — und es hat sich im ersten Lauf
+bezahlt. Im Log steht `Filter disableAutoRegistration was not registered (disabled)`: Das ist die
+`FilterRegistrationBean`, die verhindert, dass Spring Boot den JWT-Filter *zusätzlich* in die
+Servlet-Kette hängt. Diese Zeile existiert nur in einem echten Container; `MockMvc` würde eine
+Regression dort nie sehen.
+
+**Geprüft wird auf dem Draht, nicht über die Produktions-DTOs.** Ein Test, der mit derselben
+Klasse deserialisiert, mit der der Server serialisiert, bemerkt ein umbenanntes JSON-Feld nicht —
+beide Seiten wären sich einig. Die Tests schicken `Map`-Bodies und lesen entweder den rohen Text
+oder einen kleinen Record, der nur die gebrauchte Form beschreibt.
+
+**Was die drei Durchstiche belegen:**
+
+- **`AuthFlowIT`** — Registrierung gibt *keine* Tokens; Login liefert den Access-Token im Body
+  und das Refresh-Token nur im Cookie, mit `HttpOnly`, `Path=/api/auth` und `SameSite`; Rotation
+  entwertet das alte Cookie; Logout macht es wertlos; der geschützte Endpunkt antwortet ohne
+  Token mit **401** (nicht 403 — das ist der `AuthenticationEntryPoint`) und gibt den
+  Passwort-Hash nie heraus.
+- **`AccountDeletionIT`** — die Kaskade. Erst wird geprüft, dass je eine Zeile in `refresh_token`
+  und `password_reset_token` *existiert*; ohne diese zwei Zusicherungen wäre der Test auch auf
+  einer leeren Datenbank grün und behauptete „gelöscht", wo „war nie da" gilt. Die
+  Reset-Token-Zeile schreibt der Test direkt per SQL: Thema ist der Fremdschlüssel, nicht die
+  Reset-Strecke.
+- **`PasswordResetFlowIT`** — anfordern, Token aus der Mail-URL, einlösen, mit dem neuen Passwort
+  anmelden und mit dem alten nicht; derselbe Link ein zweites Mal eingelöst gibt 400; bestehende
+  Refresh-Tokens sind danach entwertet.
+
+**Hier wird erstmals maschinell belegt, dass `AFTER_COMMIT` und `@Async` greifen.** Der Test
+fängt den Aufruf am gemockten `EmailSender` mit `verify(mock, timeout(2000))` ab. Ein
+gewöhnliches `verify` würde scheitern: Der Listener läuft nach dem Commit auf dem Mail-Pool, der
+Aufruf ist also noch nicht passiert, wenn die HTTP-Antwort da ist. Genau dieses Warten ist der
+Nachweis.
+
+**`JwtProperties` — zwei Funde aus einem Test.**
+
+- **`@Size` lässt `null` durch.** Jakarta Validation prüft eine Größe nur, wenn ein Wert da ist.
+  Dass ein fehlendes Secret den Start verhindert, lag also allein am Platzhalter `${JWT_SECRET}`
+  ohne Default — eine ganz andere Mechanik in einer anderen Datei. Jetzt steht zusätzlich ein
+  `@NotBlank` an der Zeile.
+- **Die Standard-Meldung folgt der JVM-Sprache.** Im Testlauf stand „Größe muss zwischen 44 und
+  2147483647 sein" — deutsch, weil der Rechner auf `de_AT` läuft. Die Regel „Validierungsmeldung
+  explizit auf Englisch" stand dokumentiert und war hier verletzt; aufgefallen ist es erst, weil
+  ein Test die Meldung angesehen hat. Die beiden negativen Tests prüfen jetzt den Meldungstext
+  mit, damit ein entferntes `message` rot wird statt still übersetzt.
+- **Geprüft wird die Grenze, nicht ein beliebiger Falschwert:** 43 Zeichen gegen 44. Ein Test mit
+  „viel zu kurz" wäre auch grün, wenn die Grenze bei 32 läge.
+- *Nebenbei:* Der Feldname steht in der **Ursache** der Exception, nicht in der obersten
+  Meldung — `getFailure().rootCause()` statt `getFailure()`. Die erste Fassung des Tests war
+  deshalb rot, obwohl die Validierung längst griff.
+
+**`UserDetailsServiceAutoConfiguration` ist abgeschaltet — für Produktion.** Der volle Kontext
+legt keinen In-Memory-Benutzer mehr an. In den `@WebMvcTest`-Schnitten steht `Using generated
+security password` weiterhin im Log: Ein Schnitt baut seine eigene Autokonfigurationsliste und
+übernimmt den `exclude` der Anwendungsklasse nicht. Bewusst so gelassen — das ist eine
+Testvorrichtung, nicht die Anwendung.
+
 ### CI (GitHub Actions)
 
 Vorgezogen vor die Benutzerverwaltung, damit alle folgenden Branches von Anfang an geprüft
@@ -849,6 +945,36 @@ Fallstricke, die beim Einrichten Zeit gekostet haben:
   `lint-ci`.
 - **Der Lint-Durchlauf hat eigene Regeln**, die der `type-check` nicht kennt: `vi.fn()` braucht
   einen Typparameter, `toThrow` ein Argument. Beides erst in der CI aufgefallen.
+
+**Lokal, nicht in der CI:**
+
+- **`JAVA_HOME` muss auf das Projekt-JDK zeigen.** `./mvnw` richtet sich danach, nicht nach dem
+  in IntelliJ eingestellten JDK — und `java` auf dem PATH kann eine ältere Version sein. Symptom:
+  `Fehler: Releaseversion 25 nicht unterstützt`, obwohl die IDE sauber kompiliert. Prüfen mit
+  `./mvnw -v`; dort muss hinter `Java version:` die 25 stehen. In der CI kein Thema, dort setzt
+  `setup-java` die Version explizit.
+- **PowerShell zerlegt `-D`-Argumente am Punkt.** `./mvnw verify -Dit.test=AuthFlowIT` kommt als
+  zwei Argumente an, und Maven sucht dann eine Lebenszyklus-Phase `.test=AuthFlowIT`. In
+  Anführungszeichen bleibt es zusammen: `"-Dit.test=AuthFlowIT"`. In `cmd` und in der CI nicht
+  nötig.
+- **Docker Desktop muss laufen**, sonst findet Testcontainers keinen Socket.
+
+**Spring Boot 4 hat die Klassen in eigene Module umsortiert**, und das kostet Zeit, wenn man
+Importpfade aus dem Gedächtnis schreibt. Drei Fälle allein in dieser Branch:
+
+- `UserDetailsServiceAutoConfiguration` liegt in
+  `org.springframework.boot.security.autoconfigure` — ohne das `servlet`-Unterpaket aus Boot 3.
+- `TestRestTemplate` liegt in `org.springframework.boot.resttestclient`. Daneben existiert ein
+  Paket `org.springframework.boot.restclient.test`, das etwas anderes ist; die
+  IDE-Vervollständigung bietet beide an.
+- **Die `TestRestTemplate`-Bean wird nicht mehr von allein registriert.** Nötig sind *zwei*
+  Dinge, und jedes allein scheitert anders: `@AutoConfigureTestRestTemplate` an der Basisklasse
+  aktiviert `TestRestTemplateTestAutoConfiguration`, und die baut auf `RestTemplateBuilder` aus
+  `spring-boot-starter-restclient` (Test-Scope) auf. Ohne den Starter scheitert der Kontext mit
+  `NoClassDefFoundError`, ohne die Annotation fehlt die Bean. In zwei Durchläufen
+  auseinandergenommen; ein Kommentar in der `pom.xml` hält das Paar zusammen.
+
+Lehre daraus: Bei Spring-Klassen unter Boot 4 nachsehen statt auf Boot-3-Pfade verlassen.
 
 ---
 
@@ -894,21 +1020,24 @@ Branch die Änderung nicht.
 
 ### Nächste Branches
 
-*Erledigt: `refactor/async-mail` und `refactor/form-fields` — Entscheidungen und Nachweis in
-Abschnitt 8.*
+*Erledigt: `refactor/async-mail`, `refactor/form-fields` und `chore/integration-tests` —
+Entscheidungen und Nachweise in Abschnitt 8.*
 
-1. **`chore/integration-tests`** — die vertagten Test-Lücken (siehe unten) plus der
-   Integrationstest mit Testcontainers.
+1. **`chore/validation-tests`** — je Endpunkt ein Validierungstest, dazu der `SettingsView`-Test
+   zur Fehlerzuordnung. Bewusst aus `chore/integration-tests` herausgeschnitten und klein
+   gehalten: Eine Branch, an der man eine Woche sitzt, sagt am Ende nicht mehr, was warum rot ist.
 2. **MVP-Schritt 2: Projekte.**
 
 ### Testabdeckung
 
-82 Tests (69 Backend, 13 Frontend), alle Sicherheitsentscheidungen maschinell abgesichert:
+93 Tests — 72 Unit-, Web- und Kontext-Tests im Backend, 8 Integrationstests, 13 im Frontend.
+Alle Sicherheitsentscheidungen sind maschinell abgesichert:
 
 | Klasse | Tests | Ebene | Kernaussagen |
 |---|---|---|---|
 | `JwtServiceTest` | 4 | Unit (BE) | Signaturprüfung greift, Manipulation wird erkannt, Ablauf wirkt |
 | `RefreshTokenServiceTest` | 8 | Unit (BE) | Klartext landet nie in der DB, Widerruf wird *gespeichert*, Grund wird festgehalten, `revokeAllTokens` erfasst jedes Token |
+| `JwtPropertiesTest` | 3 | Unit (BE) | Ein Secret von 43 Zeichen verhindert den Start, ein fehlendes ebenso, `Duration` wird aus `15m`/`14d` gebunden, die Meldungen sind englisch |
 | `UserServiceTest` | 11 | Unit (BE) | Passwort wird gehasht, E-Mail normalisiert, jede Änderung verlangt das Passwort, bei falschem Passwort wird das neue nicht einmal gehasht |
 | `AuthServiceTest` | 11 | Unit (BE) | Keine Enumeration, Rotation entwertet das *alte* Token, Logout wirft nie, Variante B in der richtigen Reihenfolge |
 | `PasswordResetServiceTest` | 8 | Unit (BE) | Unbekannte E-Mail bewirkt *nichts*, Link im Ereignis und gespeicherter Hash gehören zusammen, die Adresse im Ereignis ist die normalisierte, offene Tokens werden entwertet, Reihenfolge beim Einlösen |
@@ -916,6 +1045,9 @@ Abschnitt 8.*
 | `AuthControllerTest` | 15 | Web-Layer (BE) | Statuscodes, Cookie-Attribute, Refresh-Token *nicht* im Body, 400 statt 500 bei fehlendem Reset-Token |
 | `UserControllerTest` | 10 | Web-Layer (BE) | 403 statt 401 bei falschem Passwort, Passwort-Hash verlässt den Server nie, Cookie wird beim Löschen entfernt |
 | `BackendApplicationTests` | 1 | Kontext (BE) | Der vollständige Kontext startet — also ist jede Bean verdrahtet und die Fail-Fast-Konfiguration vollständig mit Werten versorgt |
+| `AuthFlowIT` | 4 | Integration (BE) | Registrierung gibt keine Tokens, Cookie-Attribute stimmen, Rotation entwertet das alte Token, Logout wirkt, geschützter Endpunkt ohne Token gibt 401 |
+| `AccountDeletionIT` | 1 | Integration (BE) | `ON DELETE CASCADE` räumt `refresh_token` und `password_reset_token` mit — und die Zeilen waren vorher nachweislich da |
+| `PasswordResetFlowIT` | 3 | Integration (BE) | Ganze Strecke über echte DB, Link nur einmal einlösbar, bestehende Sitzungen danach entwertet, `AFTER_COMMIT` und `@Async` belegt |
 | `interceptors.spec.ts` | 3 | Unit (FE) | Ein Refresh bei parallelen 401ern, kein Refresh ohne Not, geordneter Abgang bei Fehlschlag |
 | `userStore.spec.ts` | 6 | Unit (FE) | Antworten werden übernommen statt nachgeladen, neuer Token landet im `authStore`, Löschen leert Profil *und* Sitzung |
 | `PasswordField.spec.ts` | 4 | Unit (FE) | Umschalter wechselt den Typ, Modell läuft über zwei Ebenen durch, Längenregel und `autocomplete` hängen an `purpose` — beide Seiten geprüft |
@@ -938,18 +1070,16 @@ Grün eine Aussage.
 
 ### Vertagte Tests (bewusst später)
 
-- **`JwtProperties`-Validierung:** Dass ein zu kurzes Secret den Start verhindert, ist nur
-  manuell geprüft.
-- **Login-Validierung** (`LoginRequestDTO`) und die restliche Registrierungs-Validierung.
-- **Datenbankschicht:** Repositories, Migrationen, `ON DELETE CASCADE` — bisher prüft nur
-  `ddl-auto=validate` beim Start. Die Kaskade beim Kontolöschen ist manuell nachgewiesen.
-- **Integrationstest mit Testcontainers:** Registrierung → Login → Refresh → Logout gegen eine
-  echte Datenbank. Schließt die beiden vorigen Lücken weitgehend in einem Durchlauf.
-- **Dass `@TransactionalEventListener(AFTER_COMMIT)` und `@Async` wirklich greifen**, prüft kein
-  Unit-Test: Der Listener-Test ruft die Methode direkt auf und geht damit am Proxy vorbei. Bisher
-  nur manuell nachgewiesen (Thread-Name und Reihenfolge im Log). Im Integrationstest zu
-  erledigen, zusammen mit dem Fall „kein `@Transactional` am Service" — dann müsste gar keine
-  Mail rausgehen.
+*Geschlossen in `chore/integration-tests`: Datenbankschicht und Kaskade, der Testcontainers-
+Durchstich, der Nachweis für `AFTER_COMMIT` und `@Async`, die `JwtProperties`-Validierung.*
+
+- **Login-Validierung** (`LoginRequestDTO`) und die restliche Registrierungs-Validierung — je
+  Endpunkt *ein* Test „Pflichtfeld leer ergibt 400", nicht einer je Feld. Geprüft wird, *dass die
+  Annotationen dran sind*; dass Bean Validation funktioniert, ist nicht unsere Zusage. Anlass war
+  konkret: Das fehlende `@NotBlank` am Reset-Token erzeugte eine 500, wo eine 400 hingehört.
+- **Der Fall „kein `@Transactional` am Service"** — dann dürfte gar keine Mail rausgehen, weil
+  ein `@TransactionalEventListener` ohne Transaktion stumm nichts tut. Mit dem Mail-Mock in der
+  Basisklasse wäre das jetzt prüfbar; bisher nur durchdacht, nicht getestet.
 - **Komponententest für die Einstellungsabschnitte** — fertig geschrieben, dann zurückgestellt:
   Er hängt am Markup, und die Oberfläche war in Bewegung. Nach der Aufteilung in drei Komponenten
   ist er leichter zu schreiben, und seit `refactor/form-fields` auch stabiler: Das Markup der
@@ -965,13 +1095,15 @@ Grün eine Aussage.
 
 ### Offene Punkte im Auth-Umfeld
 
-- **`UserDetailsServiceAutoConfiguration` abschalten.** Spring Boot legt beim Start einen
-  In-Memory-Benutzer mit Zufallspasswort an, weil kein `UserDetailsService`-Bean existiert —
-  `AuthService` prüft das Passwort selbst. Aktuell harmlos, weil kein Endpunkt diesen Weg
-  benutzt, aber ein ungenutzter Anmeldeweg im Kontext. Lösung:
-  `@SpringBootApplication(exclude = UserDetailsServiceAutoConfiguration.class)` oder
-  `spring.autoconfigure.exclude`. Nachweis: Der Start-Log enthält kein
-  `Using generated security password`. Zu erledigen in `chore/integration-tests`.
+- **`EmailSender` wird von keinem Test mehr durchlaufen.** Seit der Mail-Mock in der
+  IT-Basisklasse steht, prüft nichts mehr, dass die Klasse eine `SimpleMailMessage` korrekt
+  befüllt und `MailException` schluckt. Sie ist ein dünner Wrapper, und abgedeckt war sie vorher
+  auch nicht — besser wird es dadurch nicht. Ein eigener Unit-Test mit gemocktem
+  `JavaMailSender` wäre die Lösung.
+- **`UserDetailsServiceAutoConfiguration` in den `@WebMvcTest`-Schnitten.** Für die Anwendung
+  abgeschaltet (Abschnitt 8); ein Schnitt-Test übernimmt den `exclude` der Anwendungsklasse aber
+  nicht und legt weiter einen In-Memory-Benutzer an. Harmlos, weil Testvorrichtung — notiert,
+  damit die Log-Zeile nicht als offener Fehler gelesen wird.
 - **Aufräumjob** für abgelaufene und verbrauchte Token-Zeilen — betrifft jetzt **zwei** Tabellen,
   `refresh_token` und `password_reset_token`. Erst dann lohnt sich ein Index auf `expires_at`.
 - **Echter E-Mail-Anbieter:** eigene Domain mit SPF-, DKIM- und DMARC-Einträgen. Am Code ändert
