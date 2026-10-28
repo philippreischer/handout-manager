@@ -134,6 +134,12 @@
 			<artifactId>testcontainers-postgresql</artifactId>
 			<scope>test</scope>
 		</dependency>
+		<!-- Required together with @AutoConfigureTestRestTemplate on the integration
+		     test base class. The annotation activates
+		     TestRestTemplateTestAutoConfiguration, which builds on RestTemplateBuilder
+		     from this starter. Neither alone works: without the starter the context
+		     fails with NoClassDefFoundError, without the annotation the
+		     TestRestTemplate bean is never registered. -->
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
 			<artifactId>spring-boot-starter-restclient</artifactId>
