@@ -166,6 +166,24 @@ class UserControllerTest {
         verify(userService, never()).updateUserName(any(), any(), any());
     }
 
+    @Test
+    void shouldReturn400_whenPasswordIsBlankOnUserNameChange() throws Exception {
+        mockMvc.perform(asCurrentUser(patch("/api/users/me/username"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "password": "",
+                                  "userName": "Moritz"
+                                }
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errors.password").value("Password is required"));
+
+        // A missing password must not reach the service: a wrong one answers 403,
+        // an absent one belongs to validation and answers 400.
+        verify(userService, never()).updateUserName(any(), any(), any());
+    }
+
     // Password
 
     @Test
@@ -223,6 +241,22 @@ class UserControllerTest {
         verify(authService, never()).changePassword(any(), any(), any());
     }
 
+    @Test
+    void shouldReturn400_whenCurrentPasswordIsBlankOnPasswordChange() throws Exception {
+        mockMvc.perform(asCurrentUser(patch("/api/users/me/password"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "password": "",
+                                  "newPassword": "newpass1234"
+                                }
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errors.password").value("Password is required"));
+
+        verify(authService, never()).changePassword(any(), any(), any());
+    }
+
     // Account deletion
 
     @Test
@@ -254,6 +288,21 @@ class UserControllerTest {
                                 """))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.status").value(403));
+    }
+
+    @Test
+    void shouldReturn400_whenPasswordIsBlankOnAccountDeletion() throws Exception {
+        mockMvc.perform(asCurrentUser(delete("/api/users/me"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "password": ""
+                                }
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errors.password").value("Password is required"));
+
+        verify(userService, never()).deleteCurrentUser(any(), any());
     }
 
 
