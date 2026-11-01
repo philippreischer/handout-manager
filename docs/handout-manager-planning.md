@@ -8,7 +8,7 @@ Rotation, Logout, JWT-Filter, einheitliches Fehlerformat (`ProblemDetail`), prof
 Cookie- und CORS-Konfiguration. Benutzerverwaltung: Profil lesen, Benutzername und Passwort
 ändern, Konto löschen — jeweils mit Passwortbestätigung. Passwort-Reset per E-Mail über
 Mailtrap, mit einmalig verwendbarem Token; der Versand läuft nach dem Commit in einem eigenen
-Thread-Pool. Im Backend 72 Tests auf Unit-, Web- und Kontext-Ebene, dazu 8 Integrationstests
+Thread-Pool. Im Backend 80 Tests auf Unit-, Web- und Kontext-Ebene, dazu 8 Integrationstests
 gegen eine echte PostgreSQL-Instanz über Testcontainers.
 Frontend: Vue 3 + TypeScript + Tailwind, Pinia-Stores für Auth und User, Login- und
 Registrierungsformular, Einstellungsseite mit drei Abschnitten, „Passwort vergessen" und
@@ -18,7 +18,7 @@ Refresh und Wiederholung, geteilte Feldkomponenten für Benutzername, E-Mail und
 Im Browser nachgewiesen: CORS, HttpOnly-Cookie, SameSite, Rotation ohne Diebstahlwarnung,
 Passwortwechsel mit anschließend gültigem Refresh, vollständige Reset-Strecke über Mailtrap.
 GitHub Actions baut und testet Backend und Frontend bei jedem Pull Request.
-Als Nächstes: `chore/validation-tests`.
+Als Nächstes: MVP-Schritt 2, Projekte.
 
 Diese Datei bündelt den gesamten Planungsstand als Kontext für spätere Arbeitssitzungen. Ergänzend: `naming-conventions.md` (Namenskonventionen) und das ER-Diagramm (`.drawio`).
 
@@ -909,6 +909,75 @@ security password` weiterhin im Log: Ein Schnitt baut seine eigene Autokonfigura
 übernimmt den `exclude` der Anwendungsklasse nicht. Bewusst so gelassen — das ist eine
 Testvorrichtung, nicht die Anwendung.
 
+### Validierungstests (`chore/validation-tests`)
+
+Die letzte Testlücke: Bean Validation an den Endpunkten und die drei Einstellungs-Komponenten.
+
+**Je Endpunkt ein Test „Pflichtfeld leer ergibt 400", nicht einer je Feld.** Geprüft wird, *dass
+die Annotation dran ist* — dass Bean Validation funktioniert, ist nicht unsere Zusage. Der Anlass
+war konkret: Das fehlende `@NotBlank` am Reset-Token erzeugte eine 500, wo eine 400 hingehört.
+
+- **Der Meldungstext wird mitgeprüft**, nicht nur der Statuscode. Fehlt an einer Annotation das
+  `message`, liefert Hibernate Validator die Meldung in der Sprache des Aufrufers — genau der
+  Fund aus `JwtProperties`. Ein Test auf den englischen Text wird dann rot, einer auf
+  `.exists()` nicht.
+- **„Leer" und „falsch" sind zwei verschiedene Tests.** `@Email` lässt einen leeren String
+  durch — geprüft wird nur, was da ist. Eine leere Adresse ergibt also „Email is required", eine
+  falsche „Email must be a valid address".
+- **„Kein Passwort" und „falsches Passwort" sind zwei verschiedene Wege.** Ein falsches
+  antwortet 403 aus dem Service, ein fehlendes 400 aus der Validierung, und es darf den Service
+  gar nicht erreichen. Vorher war in allen drei Endpunkten nur der erste Fall geprüft.
+- **Bewusst nicht getestet:** die `@Size(max = 255)`-Grenzen (eine 256 Zeichen lange Adresse im
+  Test ist Lärm ohne plausiblen Fehlerfall; die Spaltenbreite stimmt mit der Annotation überein)
+  und ein leeres `newPassword` — siehe die Ungenauigkeit unten.
+
+**Eine Asymmetrie, die Absicht ist:** `LoginRequestDTO` trägt nur `@NotBlank`, kein `@Email` und
+kein `@Size`. Die Registrierung speichert die Adresse und verschickt Mail dorthin, muss sie also
+prüfen; der Login *vergleicht* nur. Eine syntaktisch falsche Adresse findet dort schlicht kein
+Konto und ergibt 401 — dieselbe Antwort wie ein falsches Passwort, also auch keine
+Enumerationshilfe. Mit `@Email` bekäme „abc" eine 400 und damit eine *andere* Antwort als eine
+gültige, unbekannte Adresse: kein Leck, aber auch kein Gewinn.
+
+**Eine bekannte Ungenauigkeit:** Treffen zwei Constraints dasselbe Feld — ein leeres
+`newPassword` verletzt `@NotBlank` *und* `@Size` —, hält die Feld→Meldung-Abbildung im
+`GlobalExceptionHandler` nur eine der beiden, und welche gewinnt, legt Hibernate Validator nicht
+fest. Beide Annotationen sind trotzdem richtig: `@Size(min = 8)` lässt `null` durch, `@NotBlank`
+fängt es. Deshalb gibt es für diesen Fall keinen Test — ein Test auf den Meldungstext wäre dort
+launisch.
+
+**Ein Fehlertyp, der in drei Branches hintereinander aufgetreten ist:** zwei Parameter desselben
+Typs, deren Vertauschen **kompiliert**.
+
+| Aufruf | Folge beim Vertauschen |
+|---|---|
+| `sendPasswordReset(recipient, resetUrl)` | Token im Empfängerfeld, Adresse als Link |
+| `changePassword(password, newPassword)` | das neue Passwort als aktuelles gesendet |
+| `updateUserName(password, userName)` | der Benutzername als Passwort gesendet |
+
+Kein Compiler und kein Typ-Check sagt dazu etwas, und keine der drei Folgen erzeugt eine
+Fehlermeldung — sie erzeugen falsche Daten. Jeder dieser Aufrufe hat deshalb einen Test, der
+nichts anderes tut, als die Reihenfolge festzunageln. Die Regel steht im Cheatsheet.
+
+**Die drei Komponententests** prüfen Verhalten, nicht Markup: Argumentreihenfolge an den Store,
+Leeren der Felder nach Erfolg, und — der wichtigste — **Fehler ohne Erfolgsmeldung**. Das war der
+Fehler, den der geteilte `errorMessage` im Store verursacht hatte: Eine Action, die ihren Fehler
+selbst fängt, kann dem Aufrufer nichts mitteilen, und die Ansicht zeigte die Bestätigung auch
+nach einer 403. Bei `DeleteAccountSection` kommt dazu, dass nach einem Fehlschlag **nicht**
+navigiert werden darf — sonst landet der Benutzer auf der Login-Seite mit „Konto gelöscht",
+während das Konto noch existiert.
+
+*Korrektur zum früheren Plan:* Dort stand als Ziel „ein Fehler im Lösch-Abschnitt erscheint nicht
+über dem Namensformular". Diese Aussage ist hinfällig, seit `errorMessage` aus dem Store heraus
+ist und die Seite in drei Komponenten zerfällt — jede hält ihr eigenes Ref, Übersprechen ist
+strukturell unmöglich. Ein Test dazu hätte nur die aktuelle Struktur festgenagelt.
+
+**Gemockt wird das Store-Modul, nicht `httpClient`.** Die Aussagen betreffen das Verhalten der
+Komponente bei erfüllter oder abgewiesener Action; was der Store über Axios tut, hat
+`userStore.spec.ts`. Folge, die man leicht übersieht: **kein `setActivePinia`** — das Modul
+selbst ist ersetzt, es gibt keine Store-Instanz, die eine Pinia bräuchte. Die Regel „Pinia
+zweimal bereitstellen" gilt nur, wenn der echte Store läuft. `extractErrorMessage` bleibt dagegen
+echt, damit der Standardtext der Komponente mitgeprüft wird.
+
 ### CI (GitHub Actions)
 
 Vorgezogen vor die Benutzerverwaltung, damit alle folgenden Branches von Anfang an geprüft
@@ -1020,17 +1089,14 @@ Branch die Änderung nicht.
 
 ### Nächste Branches
 
-*Erledigt: `refactor/async-mail`, `refactor/form-fields` und `chore/integration-tests` —
-Entscheidungen und Nachweise in Abschnitt 8.*
+*Erledigt: `refactor/async-mail`, `refactor/form-fields`, `chore/integration-tests` und
+`chore/validation-tests` — Entscheidungen und Nachweise in Abschnitt 8.*
 
-1. **`chore/validation-tests`** — je Endpunkt ein Validierungstest, dazu der `SettingsView`-Test
-   zur Fehlerzuordnung. Bewusst aus `chore/integration-tests` herausgeschnitten und klein
-   gehalten: Eine Branch, an der man eine Woche sitzt, sagt am Ende nicht mehr, was warum rot ist.
-2. **MVP-Schritt 2: Projekte.**
+1. **MVP-Schritt 2: Projekte.**
 
 ### Testabdeckung
 
-93 Tests — 72 Unit-, Web- und Kontext-Tests im Backend, 8 Integrationstests, 13 im Frontend.
+110 Tests — 80 Unit-, Web- und Kontext-Tests im Backend, 8 Integrationstests, 22 im Frontend.
 Alle Sicherheitsentscheidungen sind maschinell abgesichert:
 
 | Klasse | Tests | Ebene | Kernaussagen |
@@ -1042,8 +1108,8 @@ Alle Sicherheitsentscheidungen sind maschinell abgesichert:
 | `AuthServiceTest` | 11 | Unit (BE) | Keine Enumeration, Rotation entwertet das *alte* Token, Logout wirft nie, Variante B in der richtigen Reihenfolge |
 | `PasswordResetServiceTest` | 8 | Unit (BE) | Unbekannte E-Mail bewirkt *nichts*, Link im Ereignis und gespeicherter Hash gehören zusammen, die Adresse im Ereignis ist die normalisierte, offene Tokens werden entwertet, Reihenfolge beim Einlösen |
 | `PasswordResetMailListenerTest` | 1 | Unit (BE) | Empfänger und Link gehen in dieser Reihenfolge an den `EmailSender` — beide sind Strings, ein Vertauschen kompiliert |
-| `AuthControllerTest` | 15 | Web-Layer (BE) | Statuscodes, Cookie-Attribute, Refresh-Token *nicht* im Body, 400 statt 500 bei fehlendem Reset-Token |
-| `UserControllerTest` | 10 | Web-Layer (BE) | 403 statt 401 bei falschem Passwort, Passwort-Hash verlässt den Server nie, Cookie wird beim Löschen entfernt |
+| `AuthControllerTest` | 20 | Web-Layer (BE) | Statuscodes, Cookie-Attribute, Refresh-Token *nicht* im Body, 400 statt 500 bei fehlendem Reset-Token, jedes Pflichtfeld von Login und Registrierung mit englischem Meldungstext |
+| `UserControllerTest` | 13 | Web-Layer (BE) | 403 statt 401 bei falschem Passwort, Passwort-Hash verlässt den Server nie, Cookie wird beim Löschen entfernt, fehlendes Passwort gibt 400 statt 403 |
 | `BackendApplicationTests` | 1 | Kontext (BE) | Der vollständige Kontext startet — also ist jede Bean verdrahtet und die Fail-Fast-Konfiguration vollständig mit Werten versorgt |
 | `AuthFlowIT` | 4 | Integration (BE) | Registrierung gibt keine Tokens, Cookie-Attribute stimmen, Rotation entwertet das alte Token, Logout wirkt, geschützter Endpunkt ohne Token gibt 401 |
 | `AccountDeletionIT` | 1 | Integration (BE) | `ON DELETE CASCADE` räumt `refresh_token` und `password_reset_token` mit — und die Zeilen waren vorher nachweislich da |
@@ -1051,6 +1117,9 @@ Alle Sicherheitsentscheidungen sind maschinell abgesichert:
 | `interceptors.spec.ts` | 3 | Unit (FE) | Ein Refresh bei parallelen 401ern, kein Refresh ohne Not, geordneter Abgang bei Fehlschlag |
 | `userStore.spec.ts` | 6 | Unit (FE) | Antworten werden übernommen statt nachgeladen, neuer Token landet im `authStore`, Löschen leert Profil *und* Sitzung |
 | `PasswordField.spec.ts` | 4 | Unit (FE) | Umschalter wechselt den Typ, Modell läuft über zwei Ebenen durch, Längenregel und `autocomplete` hängen an `purpose` — beide Seiten geprüft |
+| `PasswordSection.spec.ts` | 3 | Komponente (FE) | Argumentreihenfolge an den Store, beide Felder werden geleert, nach einem Fehlschlag erscheint die Erfolgsmeldung *nicht* |
+| `UserNameSection.spec.ts` | 3 | Komponente (FE) | Argumentreihenfolge, Passwortfeld wird geleert, Fehler statt Bestätigung bei Ablehnung |
+| `DeleteAccountSection.spec.ts` | 3 | Komponente (FE) | Weiterleitung mit `deleted=1` nach Erfolg — und **keine** Weiterleitung bei Fehlschlag |
 
 **Werkzeuge Backend:** Mockito nur dort, wo eine Abhängigkeit Verhalten hat — reine Datenhalter
 mit `new`, was bedeutet, dass der Prüfling von Hand konstruiert wird. `ArgumentCaptor`, um zu
@@ -1071,19 +1140,13 @@ Grün eine Aussage.
 ### Vertagte Tests (bewusst später)
 
 *Geschlossen in `chore/integration-tests`: Datenbankschicht und Kaskade, der Testcontainers-
-Durchstich, der Nachweis für `AFTER_COMMIT` und `@Async`, die `JwtProperties`-Validierung.*
+Durchstich, der Nachweis für `AFTER_COMMIT` und `@Async`, die `JwtProperties`-Validierung.
+Geschlossen in `chore/validation-tests`: Login- und Registrierungs-Validierung, die
+Einstellungs-Komponenten.*
 
-- **Login-Validierung** (`LoginRequestDTO`) und die restliche Registrierungs-Validierung — je
-  Endpunkt *ein* Test „Pflichtfeld leer ergibt 400", nicht einer je Feld. Geprüft wird, *dass die
-  Annotationen dran sind*; dass Bean Validation funktioniert, ist nicht unsere Zusage. Anlass war
-  konkret: Das fehlende `@NotBlank` am Reset-Token erzeugte eine 500, wo eine 400 hingehört.
 - **Der Fall „kein `@Transactional` am Service"** — dann dürfte gar keine Mail rausgehen, weil
   ein `@TransactionalEventListener` ohne Transaktion stumm nichts tut. Mit dem Mail-Mock in der
   Basisklasse wäre das jetzt prüfbar; bisher nur durchdacht, nicht getestet.
-- **Komponententest für die Einstellungsabschnitte** — fertig geschrieben, dann zurückgestellt:
-  Er hängt am Markup, und die Oberfläche war in Bewegung. Nach der Aufteilung in drei Komponenten
-  ist er leichter zu schreiben, und seit `refactor/form-fields` auch stabiler: Das Markup der
-  Felder liegt in `FormField`, die Abschnitte halten nur noch Überschrift, Knopf und Meldungen.
 - **`FormField`, `EmailField` und `UserNameField` sind ungetestet** — sie enthalten keine
   Verzweigung, nur Deklarationen. Geprüft wird sie indirekt über `PasswordField.spec.ts`, das
   durch beide Ebenen hindurch arbeitet. Ein eigener Test würde dort Markup festnageln, ohne eine

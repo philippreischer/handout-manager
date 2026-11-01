@@ -1,6 +1,6 @@
 # handout-manager — Naming Conventions Cheatsheet
 
-**v1.0 · in Verwendung**
+**v1.1 · in Verwendung**
 
 Analog zum A11yForge-Cheatsheet. Generische Konventionen übernommen, Domänen-Glossar neu auf dieses Projekt gemünzt.
 
@@ -94,7 +94,9 @@ Merke: **Handout** und **Note** sind *Werte* von `ResourceType`, keine eigenen E
   Tokens, Links mit Token, Passwörter. Eine E-Mail-Adresse ist keiner und darf drinbleiben.
 - **`@Size` braucht `@NotBlank` daneben.** Jakarta Validation prüft eine Größe nur, wenn ein
   Wert vorhanden ist — `null` kommt durch jedes `@Size` und `@Min`. Wo ein Wert verpflichtend
-  *und* begrenzt ist, stehen beide Annotationen.
+  *und* begrenzt ist, stehen beide Annotationen. *Preis davon:* Ein **leerer** String verletzt
+  beide, und eine Feld→Meldung-Abbildung kann nur eine der zwei tragen — welche, legt Hibernate
+  Validator nicht fest. Dieser eine Fall ist deshalb kein Testfall.
 - **Importpfade von Spring-Klassen unter Boot 4 nachsehen, nicht aus dem Gedächtnis schreiben.**
   Boot 4 hat Autokonfiguration und Testunterstützung in eigene Module umsortiert; die Pfade aus
   Boot-3-Beispielen im Netz stimmen nicht mehr, und die IDE bietet teils ähnlich benannte Pakete
@@ -385,6 +387,12 @@ POST   /api/resources/{resourceId}/permissions
 - **Jeden neuen Test einmal absichtlich brechen.** Die geprüfte Bedingung im Produktionscode
   entfernen, den Test rot sehen, zurücknehmen. Grün allein heißt nur „nicht widerlegt" — erst
   das gesehene Rot beweist, dass der Test beobachtet, was draufsteht.
+- **Zwei Parameter desselben Typs brauchen einen Test für die *Reihenfolge*.** Ein Vertauschen
+  kompiliert, der Typ-Check schweigt, und die Folge ist keine Fehlermeldung, sondern falsche
+  Daten: `changePassword(password, newPassword)` vertauscht schickt das neue Passwort als
+  aktuelles, `sendPasswordReset(recipient, resetUrl)` das Token ins Empfängerfeld. Ein Test, der
+  nichts anderes tut als die Argumente festzunageln, kostet fünf Zeilen und deckt den einzigen
+  Fehler ab, den so ein Aufruf überhaupt machen kann.
 
 ### Backend-Tests — Werkzeuge
 
@@ -448,6 +456,14 @@ POST   /api/resources/{resourceId}/permissions
   die Arbeit auf einem anderen Thread gelandet ist.
 - **Bei einer Grenze den Grenzwert prüfen, nicht einen beliebigen Falschwert.** 43 Zeichen gegen
   44 belegt, dass die Grenze dort liegt; „viel zu kurz" wäre auch grün, wenn sie bei 32 läge.
+- **Validierung: ein Test je Endpunkt, nicht je Feld — aber mit dem Meldungstext.** Geprüft
+  wird, *dass die Annotation dran ist*; dass Bean Validation funktioniert, ist nicht unsere
+  Zusage. Der Text gehört trotzdem in die Zusicherung: Fehlt an der Annotation das `message`,
+  liefert Hibernate Validator die Meldung in der Sprache des Aufrufers, und ein Test auf
+  `.exists()` würde das nie bemerken. Dazu gehört ein `verify(service, never())` — eine
+  Validierung, die den Service trotzdem erreicht, ist keine.
+- **„Leer" und „falsch" sind zwei Testfälle mit zwei Meldungen.** `@Email` und `@Size` prüfen
+  nur, was da *ist*; ein leerer String fällt deshalb durch `@NotBlank`, nicht durch sie.
 - **Bei `@ConfigurationProperties`-Validierung steht der Feldname in der *Ursache*.** Die oberste
   Meldung nennt nur den Präfix — also `getFailure().rootCause()` statt `getFailure()`. Und die
   Standard-Meldung einer Constraint-Annotation folgt der JVM-Sprache: Prüfe entweder nicht
@@ -477,10 +493,16 @@ POST   /api/resources/{resourceId}/permissions
   `client.interceptors.request.clear()` und `.response.clear()`, sonst stapelt jeder Test einen
   weiteren Interceptor obendrauf. Ebenso `setActivePinia(createPinia())` — ohne laufende
   Vue-App gibt es keine Pinia-Instanz.
-- **Komponententest: Pinia zweimal bereitstellen.** `setActivePinia(pinia)` für die Aufrufe des
-  Tests selbst, `mount(X, { global: { plugins: [pinia] } })` für die Komponente, die ihren Store
-  über Vues Injection bekommt. Dieselbe Instanz, zwei Zugänge — sonst prüft der Test an einem
-  zweiten, leeren Store.
+- **Komponententest: Pinia zweimal bereitstellen** — *aber nur, wenn der echte Store läuft.*
+  `setActivePinia(pinia)` für die Aufrufe des Tests selbst, `mount(X, { global: { plugins:
+  [pinia] } })` für die Komponente, die ihren Store über Vues Injection bekommt. Dieselbe
+  Instanz, zwei Zugänge — sonst prüft der Test an einem zweiten, leeren Store.
+  **Wird das Store-Modul selbst per `vi.mock` ersetzt, entfällt beides:** Es gibt dann keine
+  Store-Instanz, die eine Pinia bräuchte. Das ist der richtige Schnitt für einen
+  Komponententest, dessen Aussage „was tut die Komponente bei erfüllter oder abgewiesener
+  Action" lautet — was der Store über Axios tut, hat sein eigener Test. Hilfsfunktionen wie
+  `extractErrorMessage` bleiben dabei **echt**, damit der Standardtext der Komponente
+  mitgeprüft wird.
 - **`flushPromises()` nach jedem ausgelösten Event**, das eine `async`-Funktion anstößt. Der
   Test ist schneller als das `await`; ohne diese Zeile prüft man einen Zustand, der noch nicht
   eingetreten ist. Häufigster Grund für scheinbar grundlos rote Tests.
@@ -555,4 +577,4 @@ Zugehörigkeit: Layout, Navigation, `App.vue`, geteilte Formularbausteine.
 
 ---
 
-*handout-manager · Naming Conventions · v1.0*
+*handout-manager · Naming Conventions · v1.1*

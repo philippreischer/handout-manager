@@ -116,6 +116,59 @@ class AuthControllerTest {
         verify(userService, never()).register(any(), any(), any());
     }
 
+    @Test
+    void shouldReturn400_whenRegistrationEmailIsBlank() throws Exception {
+        mockMvc.perform(post("/api/auth/register")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "email": "",
+                                  "password": "pass1234",
+                                  "userName": "Max"
+                                }
+                                """))
+                .andExpect(status().isBadRequest())
+                // @Email lets an empty string pass - it only checks a value that is
+                // there. Blank and malformed are therefore two different messages.
+                .andExpect(jsonPath("$.errors.email").value("Email is required"));
+
+        verify(userService, never()).register(any(), any(), any());
+    }
+
+    @Test
+    void shouldReturn400_whenRegistrationEmailIsMalformed() throws Exception {
+        mockMvc.perform(post("/api/auth/register")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "email": "abc",
+                                  "password": "pass1234",
+                                  "userName": "Max"
+                                }
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errors.email").value("Email must be a valid address"));
+
+        verify(userService, never()).register(any(), any(), any());
+    }
+
+    @Test
+    void shouldReturn400_whenUserNameIsBlank() throws Exception {
+        mockMvc.perform(post("/api/auth/register")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "email": "max@mustermann.com",
+                                  "password": "pass1234",
+                                  "userName": ""
+                                }
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errors.userName").value("Username is required"));
+
+        verify(userService, never()).register(any(), any(), any());
+    }
+
     //Login Tests
     @Test
     void shouldReturnAccessTokenAndCookie_whenLoginSucceeds() throws Exception {
@@ -171,6 +224,38 @@ class AuthControllerTest {
                             """))
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.status").value(401));
+    }
+
+    @Test
+    void shouldReturn400_whenLoginEmailIsBlank() throws Exception {
+        mockMvc.perform(post("/api/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                            {
+                              "email": "",
+                              "password": "pass1234"
+                            }
+                            """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errors.email").value("Email is required"));
+
+        verify(authService, never()).login(any(), any());
+    }
+
+    @Test
+    void shouldReturn400_whenLoginPasswordIsBlank() throws Exception {
+        mockMvc.perform(post("/api/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                            {
+                              "email": "max@mustermann.com",
+                              "password": ""
+                            }
+                            """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errors.password").value("Password is required"));
+
+        verify(authService, never()).login(any(), any());
     }
 
     //Refresh Tests
@@ -238,7 +323,7 @@ class AuthControllerTest {
     }
 
     @Test
-    void shouldReturn400_whenEmailIsMalformed() throws Exception {
+    void shouldReturn400_whenResetEmailIsMalformed() throws Exception {
         mockMvc.perform(post("/api/auth/password-reset/request")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
