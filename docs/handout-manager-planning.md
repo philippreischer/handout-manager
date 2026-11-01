@@ -770,9 +770,11 @@ dass er die richtige Seite der Verzweigung beobachtet.
   Ort für die Validierung. Alle unter dem Präfix `handout-manager.`.
 - **Sicherer Default, lokale Abweichung:** In `application.properties` stehen die
   *produktionstauglichen* Werte (`cookie.secure=true`), das Profil `local` überschreibt sie.
-  `application-local.properties` wird **eingecheckt** — sie enthält kein Geheimnis, und ohne sie
-  kann niemand das Repo lokal betreiben. *Eine dokumentierte Ausnahme:* SMTP-Host und -Port
-  sowie die **Reset-URL** stehen **nur** im Profil, nicht in der Hauptdatei. Der Grund ist nicht
+  `application-local.properties` wird **eingecheckt** — sie enthält kein Geheimnis, das außerhalb
+  dieses Rechners etwas wert wäre (das Datenbank-Passwort darin ist dasselbe wie in der
+  `docker-compose.yml`), und ohne sie kann niemand das Repo lokal betreiben.
+  *Dokumentierte Ausnahmen:* SMTP-Host und -Port, die **Reset-URL** sowie die
+  **Datasource-Zugangsdaten** stehen **nur** im Profil, nicht in der Hauptdatei. Der Grund ist nicht
   allein, dass es keinen produktionstauglichen Standard gibt — es ist die *Art*, wie ein
   geratener Standard scheitert. Ein falscher Mail-Host nimmt die Nachricht an und verliert sie;
   eine Reset-URL auf `localhost` verschickt Links, die niemand öffnen kann. Beides fällt beim
@@ -783,6 +785,15 @@ dass er die richtige Seite der Verzweigung beobachtet.
   Die Regel lautet also nicht „Frontend-Adressen haben keine Defaults", sondern „ein Default,
   dessen Fehler still bleibt, ist keiner". Ein Kommentar in beiden Dateien sagt das, damit es
   nicht wie ein Versehen aussieht.
+  *Die Datasource kam später dazu, und sie hat die stärkste Begründung von allen.* Dort stand
+  `spring.datasource.password=${DB_PASSWORD:secret}` — ein **Zugangsdatum mit Default**, also ein
+  eingebautes Passwort für jeden, der die Umgebungsvariable vergisst. Jetzt stehen `url`,
+  `username` und `password` nur im Profil `local`, und die Hauptdatei enthält dazu **keine Zeile**
+  — nicht einmal einen Platzhalter. Das ist sogar einfacher als vorher: Spring Boot liest
+  `SPRING_DATASOURCE_URL`, `SPRING_DATASOURCE_USERNAME` und `SPRING_DATASOURCE_PASSWORD` von sich
+  aus aus der Umgebung, und weil kein Platzhalter mehr aufzulösen ist, brauchen die Tests nichts
+  davon. *Aufgefallen beim Durchsehen der Git-Historie vor der Entscheidung, das Repo öffentlich
+  zu machen* — die Historie war sauber, aber die eine Zeile stach heraus.
 - **`server.error.include-stacktrace=never`** explizit gesetzt. Lokal überschreibt DevTools das
   mit eigenen Entwicklungs-Defaults; DevTools ist `optional` und nicht Teil des
   Produktions-Jars, dort greift die Einstellung also.
