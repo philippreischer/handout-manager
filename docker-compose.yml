@@ -2,6 +2,7 @@ services:
   postgres:
     image: postgres:18
     container_name: handout_manager_db
+    # Development only. This file is not meant to be deployed as it is.
     environment:
       POSTGRES_DB: handout_manager
       POSTGRES_USER: handout_manager
