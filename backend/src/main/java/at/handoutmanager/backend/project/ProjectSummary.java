@@ -1,4 +1,8 @@
 package at.handoutmanager.backend.project;
 
-public record ProjectSummary() {
+import at.handoutmanager.backend.membership.MembershipRole;
+
+public record ProjectSummary(Long id,
+                             String name,
+                             MembershipRole membershipRole) {
 }
