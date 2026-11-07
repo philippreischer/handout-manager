@@ -14,13 +14,13 @@ Frontend: Vue 3 + TypeScript + Tailwind, Pinia-Stores für Auth und User, Login-
 Registrierungsformular, Einstellungsseite mit drei Abschnitten, „Passwort vergessen" und
 Einlöse-Seite, Router mit Guard in beide Richtungen, Request- und Response-Interceptor mit
 Refresh und Wiederholung, geteilte Feldkomponenten für Benutzername, E-Mail und Passwort,
-13 Vitest-Tests.
+22 Vitest-Tests auf Unit- und Komponenten-Ebene.
 Im Browser nachgewiesen: CORS, HttpOnly-Cookie, SameSite, Rotation ohne Diebstahlwarnung,
 Passwortwechsel mit anschließend gültigem Refresh, vollständige Reset-Strecke über Mailtrap.
 GitHub Actions baut und testet Backend und Frontend bei jedem Pull Request.
 Als Nächstes: MVP-Schritt 2, Projekte.
 
-Diese Datei bündelt den gesamten Planungsstand als Kontext für spätere Arbeitssitzungen. Ergänzend: `naming-conventions.md` (Namenskonventionen) und das ER-Diagramm (`.drawio`).
+Diese Datei bündelt den gesamten Planungsstand als Kontext für spätere Arbeitssitzungen. Ergänzend: `naming-conventions.md` (Namenskonventionen).
 
 ---
 
@@ -275,7 +275,7 @@ handout-manager/
 ├── .github/workflows/     (ci.yml)
 ├── backend/
 ├── frontend/
-├── docs/          (Planung, Naming-Conventions, ER-Diagramm, Postman-Collection)
+├── docs/          (Planung, Naming-Conventions, Postman-Collection)
 ├── docker-compose.yml
 └── README.md
 ```
@@ -1062,7 +1062,6 @@ Lehre daraus: Bei Spring-Klassen unter Boot 4 nachsehen statt auf Boot-3-Pfade v
 
 - **FK-Löschverhalten** (`ON DELETE`) beim Schreiben der Flyway-Migrationen festlegen — z. B. `created_by` → SET NULL vs. Löschsperre; `membership`/`permission` → CASCADE.
 - **Datei-Speicherung:** `file_path` hält nur einen Verweis. Wo landen hochgeladene Dateien physisch (lokales Filesystem, Volume, Object Storage)? Noch offen.
-- **Diagramm-Feinschliff:** FK-Referenztexte im `.drawio` auf Singular/lowercase angleichen (`user(id)`, `project(id)`, `resource(id)`); Enum-Hinweise auf UPPER_SNAKE. `refresh_token` und `password_reset_token` fehlen im Diagramm noch ganz.
 - **Namenskonventionen:** siehe `naming-conventions.md`.
 
 ### Branch-Plan für MVP-Schritt 1 (Auth)
