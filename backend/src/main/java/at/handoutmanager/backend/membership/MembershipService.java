@@ -2,6 +2,8 @@ package at.handoutmanager.backend.membership;
 
 import org.springframework.stereotype.Service;
 
+import java.util.List;
+
 @Service
 public class MembershipService {
 
@@ -28,5 +30,10 @@ public class MembershipService {
             return null;
         }
         return nickName;
+    }
+
+    public List<Membership> getMembershipsByUserId(Long userId){
+
+        return membershipRepository.findByUserId(userId);
     }
 }

@@ -1,9 +1,15 @@
 package at.handoutmanager.backend.project;
 
+import at.handoutmanager.backend.membership.Membership;
 import at.handoutmanager.backend.membership.MembershipRole;
 import at.handoutmanager.backend.membership.MembershipService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
+import java.util.List;
+import java.util.Map;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 @Service
 public class ProjectService {
@@ -26,4 +32,22 @@ public class ProjectService {
         return new ProjectSummary(savedProject.getId(), savedProject.getName(), MembershipRole.GAME_MASTER);
     }
 
+    public List<ProjectSummary> getProjectsForUser(Long userId){
+
+        List<Membership> memberships = membershipService.getMembershipsByUserId(userId);
+
+        List<Long> projectIds = memberships.stream()
+                .map(Membership::getProjectId)
+                .toList();
+
+        Map<Long, Project> projectsById = projectRepository.findAllById(projectIds).stream()
+                .collect(Collectors.toMap(Project::getId, Function.identity()));
+
+        return memberships.stream()
+                .map(membership -> {
+                    Project project = projectsById.get(membership.getProjectId());
+                    return new ProjectSummary(project.getId(), project.getName(), membership.getMembershipRole());
+                })
+                .toList();
+    }
 }
