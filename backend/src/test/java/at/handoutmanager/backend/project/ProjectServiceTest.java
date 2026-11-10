@@ -1,5 +1,6 @@
 package at.handoutmanager.backend.project;
 
+import at.handoutmanager.backend.membership.Membership;
 import at.handoutmanager.backend.membership.MembershipRole;
 import at.handoutmanager.backend.membership.MembershipService;
 import org.junit.jupiter.api.BeforeEach;
@@ -12,17 +13,20 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
 
+import java.util.List;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
 class ProjectServiceTest {
 
     private static final Long USER_ID = 1L;
     private static final Long PROJECT_ID = 2L;
+    private static final Long SECOND_PROJECT_ID = 3L;
     private static final String PROJECT_NAME = "Curse of Strahd";
+    private static final String SECOND_PROJECT_NAME = "Tomb of Annihilation";
     private static final String NICK_NAME = "Strahd von Zarovich";
 
     @Mock
@@ -71,5 +75,49 @@ class ProjectServiceTest {
         ProjectSummary result = sut.createProject(USER_ID, PROJECT_NAME, NICK_NAME);
 
         assertThat(result).isEqualTo(new ProjectSummary(PROJECT_ID, PROJECT_NAME, MembershipRole.GAME_MASTER));
+    }
+
+    @Test
+    void shouldReturnSummariesWithNameFromProjectAndRoleFromMembership_whenUserHasProjects() {
+        Project secondProject = projectWithId(SECOND_PROJECT_ID, SECOND_PROJECT_NAME);
+        when(membershipServiceMock.getMembershipsByUserId(USER_ID)).thenReturn(List.of(
+                new Membership(USER_ID, PROJECT_ID, NICK_NAME, MembershipRole.GAME_MASTER),
+                new Membership(USER_ID, SECOND_PROJECT_ID, NICK_NAME, MembershipRole.PLAYER)));
+        when(projectRepositoryMock.findAllById(List.of(PROJECT_ID, SECOND_PROJECT_ID)))
+                .thenReturn(List.of(secondProject, savedProject));
+
+        List<ProjectSummary> result = sut.getProjectsForUser(USER_ID);
+
+        assertThat(result).containsExactly(
+                new ProjectSummary(PROJECT_ID, PROJECT_NAME, MembershipRole.GAME_MASTER),
+                new ProjectSummary(SECOND_PROJECT_ID, SECOND_PROJECT_NAME, MembershipRole.PLAYER));
+    }
+
+    @Test
+    void shouldReturnEmptyList_whenUserHasNoMemberships() {
+        List<ProjectSummary> result = sut.getProjectsForUser(USER_ID);
+
+        assertThat(result).isEmpty();
+    }
+
+    @Test
+    void shouldLoadAllProjectsInOneQuery_whenUserHasSeveralProjects() {
+        Project secondProject = projectWithId(SECOND_PROJECT_ID, SECOND_PROJECT_NAME);
+        when(membershipServiceMock.getMembershipsByUserId(USER_ID)).thenReturn(List.of(
+                new Membership(USER_ID, PROJECT_ID, NICK_NAME, MembershipRole.GAME_MASTER),
+                new Membership(USER_ID, SECOND_PROJECT_ID, NICK_NAME, MembershipRole.GAME_MASTER)));
+        when(projectRepositoryMock.findAllById(List.of(PROJECT_ID, SECOND_PROJECT_ID)))
+                .thenReturn(List.of(savedProject, secondProject));
+
+        sut.getProjectsForUser(USER_ID);
+
+        verify(projectRepositoryMock, times(1)).findAllById(any());
+        verify(projectRepositoryMock, never()).findById(any());
+    }
+
+    private Project projectWithId(Long id, String name) {
+        Project project = new Project(name);
+        ReflectionTestUtils.setField(project, "id", id);
+        return project;
     }
 }
