@@ -3,6 +3,7 @@ package at.handoutmanager.backend.membership;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
+import java.util.Optional;
 
 @Service
 public class MembershipService {
@@ -15,9 +16,7 @@ public class MembershipService {
 
     public Membership createMembership(Long userId, Long projectId,
                                        String nickName, MembershipRole membershipRole){
-
         String normalizedNickName = normalizeNickName(nickName);
-
         Membership membership = new Membership(userId, projectId, normalizedNickName, membershipRole);
 
         return membershipRepository.save(membership);
@@ -25,7 +24,6 @@ public class MembershipService {
 
 
     private String normalizeNickName(String nickName){
-
         if (nickName == null || nickName.isBlank()){
             return null;
         }
@@ -33,7 +31,10 @@ public class MembershipService {
     }
 
     public List<Membership> getMembershipsByUserId(Long userId){
-
         return membershipRepository.findByUserId(userId);
+    }
+
+    public Optional<Membership> findMembership(Long userId, Long projectId){
+        return membershipRepository.findByUserIdAndProjectId(userId, projectId);
     }
 }
