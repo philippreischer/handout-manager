@@ -22,6 +22,7 @@ import java.util.List;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -33,7 +34,9 @@ class ProjectControllerTest {
 
     private static final Long USER_ID = 1L;
     private static final Long PROJECT_ID = 2L;
+    private static final Long SECOND_PROJECT_ID = 3L;
     private static final String PROJECT_NAME = "Curse of Strahd";
+    private static final String SECOND_PROJECT_NAME = "Tomb of Annihilation";
     private static final String NICK_NAME = "Strahd von Zarovich";
 
     private static final String VALID_REQUEST = """
@@ -90,6 +93,42 @@ class ProjectControllerTest {
         mockMvc.perform(post("/api/projects")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(VALID_REQUEST))
+                .andExpect(status().isUnauthorized());
+
+        verifyNoInteractions(projectServiceMock);
+    }
+
+    @Test
+    void shouldReturnProjects_whenUserHasProjects() throws Exception {
+        when(projectServiceMock.getProjectsForUser(USER_ID)).thenReturn(List.of(
+                new ProjectSummary(PROJECT_ID, PROJECT_NAME, MembershipRole.GAME_MASTER),
+                new ProjectSummary(SECOND_PROJECT_ID, SECOND_PROJECT_NAME, MembershipRole.PLAYER)));
+
+        mockMvc.perform(get("/api/projects")
+                        .with(authentication(new UsernamePasswordAuthenticationToken(USER_ID, null, List.of()))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(2))
+                .andExpect(jsonPath("$[0].id").value(PROJECT_ID))
+                .andExpect(jsonPath("$[0].name").value(PROJECT_NAME))
+                .andExpect(jsonPath("$[0].membershipRole").value("GAME_MASTER"))
+                .andExpect(jsonPath("$[1].id").value(SECOND_PROJECT_ID))
+                .andExpect(jsonPath("$[1].name").value(SECOND_PROJECT_NAME))
+                .andExpect(jsonPath("$[1].membershipRole").value("PLAYER"));
+    }
+
+    @Test
+    void shouldReturnEmptyList_whenUserHasNoProjects() throws Exception {
+        when(projectServiceMock.getProjectsForUser(USER_ID)).thenReturn(List.of());
+
+        mockMvc.perform(get("/api/projects")
+                        .with(authentication(new UsernamePasswordAuthenticationToken(USER_ID, null, List.of()))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(0));
+    }
+
+    @Test
+    void shouldReturnUnauthorized_whenNoTokenIsSentForOverview() throws Exception {
+        mockMvc.perform(get("/api/projects"))
                 .andExpect(status().isUnauthorized());
 
         verifyNoInteractions(projectServiceMock);
