@@ -38,4 +38,12 @@ public class ProjectController {
 
         return ResponseEntity.ok(projects);
     }
+
+    @GetMapping("/{projectId}")
+    public ResponseEntity<ProjectResponseDTO> getProject(@AuthenticationPrincipal Long userId,
+                                                         @PathVariable Long projectId){
+        ProjectSummary project = projectService.getProject(userId, projectId);
+
+        return ResponseEntity.ok(new ProjectResponseDTO(project.id(), project.name(), project.membershipRole()));
+    }
 }
