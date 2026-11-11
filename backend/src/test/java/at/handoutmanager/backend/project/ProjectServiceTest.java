@@ -14,8 +14,10 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.util.List;
+import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.AssertionsForClassTypes.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
@@ -114,6 +116,38 @@ class ProjectServiceTest {
         verify(projectRepositoryMock, times(1)).findAllById(any());
         verify(projectRepositoryMock, never()).findById(any());
     }
+
+    @Test
+    void shouldReturnSummaryWithRoleFromMembership_whenUserIsMember() {
+        when(membershipServiceMock.findMembership(USER_ID, PROJECT_ID))
+                .thenReturn(Optional.of(new Membership(USER_ID, PROJECT_ID, NICK_NAME, MembershipRole.PLAYER)));
+        when(projectRepositoryMock.findById(PROJECT_ID)).thenReturn(Optional.of(savedProject));
+
+        ProjectSummary result = sut.getProject(USER_ID, PROJECT_ID);
+
+        assertThat(result).isEqualTo(new ProjectSummary(PROJECT_ID, PROJECT_NAME, MembershipRole.PLAYER));
+    }
+
+    @Test
+    void shouldThrowProjectNotFound_whenUserIsNotMember() {
+        when(membershipServiceMock.findMembership(USER_ID, PROJECT_ID)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> sut.getProject(USER_ID, PROJECT_ID))
+                .isInstanceOf(ProjectNotFoundException.class);
+
+        verify(projectRepositoryMock, never()).findById(any());
+    }
+
+    @Test
+    void shouldThrowProjectNotFound_whenProjectDoesNotExist() {
+        when(membershipServiceMock.findMembership(USER_ID, PROJECT_ID))
+                .thenReturn(Optional.of(new Membership(USER_ID, PROJECT_ID, NICK_NAME, MembershipRole.GAME_MASTER)));
+        when(projectRepositoryMock.findById(PROJECT_ID)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> sut.getProject(USER_ID, PROJECT_ID))
+                .isInstanceOf(ProjectNotFoundException.class);
+    }
+
 
     private Project projectWithId(Long id, String name) {
         Project project = new Project(name);

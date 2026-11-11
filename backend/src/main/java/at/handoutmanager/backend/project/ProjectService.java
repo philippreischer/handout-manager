@@ -63,7 +63,7 @@ public class ProjectService {
                         "Project does not exist: " + membership.getProjectId()));
 
         return new ProjectSummary(project.getId(), project.getName(), membership.getMembershipRole());
-    }
 
+    }
 
 }
