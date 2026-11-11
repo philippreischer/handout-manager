@@ -133,4 +133,36 @@ class ProjectControllerTest {
 
         verifyNoInteractions(projectServiceMock);
     }
+
+    @Test
+    void shouldReturnProject_whenUserIsMember() throws Exception {
+        when(projectServiceMock.getProject(USER_ID, PROJECT_ID))
+                .thenReturn(new ProjectSummary(PROJECT_ID, PROJECT_NAME, MembershipRole.PLAYER));
+
+        mockMvc.perform(get("/api/projects/{projectId}", PROJECT_ID)
+                        .with(authentication(new UsernamePasswordAuthenticationToken(USER_ID, null, List.of()))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(PROJECT_ID))
+                .andExpect(jsonPath("$.name").value(PROJECT_NAME))
+                .andExpect(jsonPath("$.membershipRole").value("PLAYER"));
+    }
+
+    @Test
+    void shouldReturnNotFound_whenServiceThrowsProjectNotFound() throws Exception {
+        when(projectServiceMock.getProject(USER_ID, PROJECT_ID))
+                .thenThrow(new ProjectNotFoundException("No membership found"));
+
+        mockMvc.perform(get("/api/projects/{projectId}", PROJECT_ID)
+                        .with(authentication(new UsernamePasswordAuthenticationToken(USER_ID, null, List.of()))))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.title").value("Project not found"));
+    }
+
+    @Test
+    void shouldReturnUnauthorized_whenNoTokenIsSentForDetail() throws Exception {
+        mockMvc.perform(get("/api/projects/{projectId}", PROJECT_ID))
+                .andExpect(status().isUnauthorized());
+
+        verifyNoInteractions(projectServiceMock);
+    }
 }
