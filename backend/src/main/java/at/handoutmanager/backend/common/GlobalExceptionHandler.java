@@ -2,6 +2,7 @@ package at.handoutmanager.backend.common;
 
 import at.handoutmanager.backend.auth.InvalidCredentialsException;
 import at.handoutmanager.backend.auth.InvalidPasswordResetTokenException;
+import at.handoutmanager.backend.project.ProjectAccessDeniedException;
 import at.handoutmanager.backend.project.ProjectNotFoundException;
 import at.handoutmanager.backend.security.InvalidRefreshTokenException;
 import at.handoutmanager.backend.user.EmailAlreadyExistsException;
@@ -131,6 +132,15 @@ public class GlobalExceptionHandler {
 
         ProblemDetail problem = ProblemDetail.forStatus(HttpStatus.NOT_FOUND);
         problem.setTitle("Project not found");
+        return problem;
+    }
+
+    @ExceptionHandler(ProjectAccessDeniedException.class)
+    public ProblemDetail handleProjectAccessDenied(ProjectAccessDeniedException e){
+        log.warn("Access denied: {}", e.getMessage());
+
+        ProblemDetail problem = ProblemDetail.forStatus(HttpStatus.FORBIDDEN);
+        problem.setTitle("Access denied");
         return problem;
     }
 
