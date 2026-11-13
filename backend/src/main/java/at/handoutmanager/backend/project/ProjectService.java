@@ -54,16 +54,26 @@ public class ProjectService {
 
     public ProjectSummary getProject(Long userId, Long projectId){
 
-        Membership membership = membershipService.findMembership(userId, projectId)
-                .orElseThrow(()-> new ProjectNotFoundException(
-                        "No membership found, userId: " + userId + ", projectId: " + projectId));
+        Membership membership = findMembershipOrThrow(userId, projectId);
 
         Project project = projectRepository.findById(membership.getProjectId())
                 .orElseThrow(()-> new ProjectNotFoundException(
                         "Project does not exist: " + membership.getProjectId()));
 
         return new ProjectSummary(project.getId(), project.getName(), membership.getMembershipRole());
-
     }
 
+    private Membership findMembershipOrThrow(Long userId, Long projectId){
+        return membershipService.findMembership(userId, projectId)
+                .orElseThrow(()-> new ProjectNotFoundException(
+                        "No membership found, userId: " + userId + ", projectId: " + projectId));
+    }
+
+
+    private void requireGameMaster(Membership membership){
+        if (membership.getMembershipRole() != MembershipRole.GAME_MASTER){
+                throw new ProjectAccessDeniedException(
+                        "userId: " + membership.getUserId() + ", projectId: " + membership.getProjectId());
+        }
+    }
 }
