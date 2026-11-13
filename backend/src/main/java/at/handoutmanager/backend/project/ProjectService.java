@@ -33,6 +33,7 @@ public class ProjectService {
         return new ProjectSummary(savedProject.getId(), savedProject.getName(), MembershipRole.GAME_MASTER);
     }
 
+
     public List<ProjectSummary> getProjectsForUser(Long userId){
 
         List<Membership> memberships = membershipService.getMembershipsByUserId(userId);
@@ -62,6 +63,25 @@ public class ProjectService {
 
         return new ProjectSummary(project.getId(), project.getName(), membership.getMembershipRole());
     }
+
+    @Transactional
+    public ProjectSummary renameProject(Long userId, Long projectId, String name){
+
+        Membership membership = findMembershipOrThrow(userId, projectId);
+
+        requireGameMaster(membership);
+
+        Project project = projectRepository.findById(membership.getProjectId())
+                .orElseThrow(()-> new ProjectNotFoundException(
+                        "Project does not exist: " + membership.getProjectId()));
+
+        project.setName(name);
+
+        Project savedProject = projectRepository.save(project);
+
+        return new ProjectSummary(savedProject.getId(), savedProject.getName(), membership.getMembershipRole());
+    }
+
 
     private Membership findMembershipOrThrow(Long userId, Long projectId){
         return membershipService.findMembership(userId, projectId)
