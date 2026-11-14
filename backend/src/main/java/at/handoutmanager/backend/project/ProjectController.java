@@ -46,4 +46,13 @@ public class ProjectController {
 
         return ResponseEntity.ok(new ProjectResponseDTO(project.id(), project.name(), project.membershipRole()));
     }
+
+    @PatchMapping("/{projectId}/name")
+    public ResponseEntity<ProjectResponseDTO> renameProject(@AuthenticationPrincipal Long userId,
+                                                            @PathVariable Long projectId,
+                                                            @Valid @RequestBody ProjectRenameRequestDTO request){
+        ProjectSummary project = projectService.renameProject(userId, projectId, request.name());
+
+        return ResponseEntity.ok(new ProjectResponseDTO(project.id(), project.name(), project.membershipRole()));
+    }
 }
