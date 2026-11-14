@@ -28,6 +28,7 @@ class ProjectServiceTest {
     private static final Long PROJECT_ID = 2L;
     private static final Long SECOND_PROJECT_ID = 3L;
     private static final String PROJECT_NAME = "Curse of Strahd";
+    private static final String NEW_PROJECT_NAME = "House of Lament";
     private static final String SECOND_PROJECT_NAME = "Tomb of Annihilation";
     private static final String NICK_NAME = "Strahd von Zarovich";
 
@@ -51,6 +52,7 @@ class ProjectServiceTest {
         ReflectionTestUtils.setField(savedProject, "id", PROJECT_ID);
     }
 
+    //createProject
     @Test
     void shouldSaveProjectWithGivenName_whenProjectIsCreated() {
         when(projectRepositoryMock.save(any(Project.class))).thenReturn(savedProject);
@@ -79,6 +81,7 @@ class ProjectServiceTest {
         assertThat(result).isEqualTo(new ProjectSummary(PROJECT_ID, PROJECT_NAME, MembershipRole.GAME_MASTER));
     }
 
+    //getProjectsForUser
     @Test
     void shouldReturnSummariesWithNameFromProjectAndRoleFromMembership_whenUserHasProjects() {
         Project secondProject = projectWithId(SECOND_PROJECT_ID, SECOND_PROJECT_NAME);
@@ -117,6 +120,7 @@ class ProjectServiceTest {
         verify(projectRepositoryMock, never()).findById(any());
     }
 
+    //getProject
     @Test
     void shouldReturnSummaryWithRoleFromMembership_whenUserIsMember() {
         when(membershipServiceMock.findMembership(USER_ID, PROJECT_ID))
@@ -146,6 +150,42 @@ class ProjectServiceTest {
 
         assertThatThrownBy(() -> sut.getProject(USER_ID, PROJECT_ID))
                 .isInstanceOf(ProjectNotFoundException.class);
+    }
+
+    //renameProject
+    @Test
+    void shouldReturnSummaryWithNewName_whenUserIsOwner(){
+        when(membershipServiceMock.findMembership(USER_ID, PROJECT_ID))
+                .thenReturn(Optional.of(new Membership(USER_ID, PROJECT_ID, NICK_NAME, MembershipRole.GAME_MASTER)));
+        when(projectRepositoryMock.findById(PROJECT_ID)).thenReturn(Optional.of(savedProject));
+        when(projectRepositoryMock.save(any(Project.class))).thenReturn(savedProject);
+
+        ProjectSummary result = sut.renameProject(USER_ID, PROJECT_ID, NEW_PROJECT_NAME);
+
+        assertThat(result).isEqualTo(new ProjectSummary(PROJECT_ID, NEW_PROJECT_NAME, MembershipRole.GAME_MASTER));
+        verify(projectRepositoryMock).save(projectCaptor.capture());
+        assertThat(projectCaptor.getValue().getName()).isEqualTo(NEW_PROJECT_NAME);
+    }
+
+    @Test
+    void shouldThrowProjectNotFound_whenUserIsNotMemberOnRename(){
+        when(membershipServiceMock.findMembership(USER_ID, PROJECT_ID)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> sut.renameProject(USER_ID, PROJECT_ID, NEW_PROJECT_NAME))
+                .isInstanceOf(ProjectNotFoundException.class);
+
+        verify(projectRepositoryMock, never()).save(any());
+    }
+
+    @Test
+    void shouldThrowAccessDenied_whenUserIsNotGameMaster(){
+        when(membershipServiceMock.findMembership(USER_ID, PROJECT_ID))
+            .thenReturn(Optional.of(new Membership(USER_ID, PROJECT_ID, NICK_NAME, MembershipRole.PLAYER)));
+
+        assertThatThrownBy(() -> sut.renameProject(USER_ID, PROJECT_ID, NEW_PROJECT_NAME))
+                .isInstanceOf(ProjectAccessDeniedException.class);
+
+        verify(projectRepositoryMock, never()).save(any());
     }
 
 
