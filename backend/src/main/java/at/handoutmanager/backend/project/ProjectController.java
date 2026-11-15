@@ -1,6 +1,7 @@
 package at.handoutmanager.backend.project;
 
 import jakarta.validation.Valid;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -54,5 +55,13 @@ public class ProjectController {
         ProjectSummary project = projectService.renameProject(userId, projectId, request.name());
 
         return ResponseEntity.ok(new ProjectResponseDTO(project.id(), project.name(), project.membershipRole()));
+    }
+
+    @DeleteMapping("/{projectId}")
+    public ResponseEntity<Void> deleteProject(@AuthenticationPrincipal Long userId,
+                                              @PathVariable Long projectId){
+        projectService.deleteProject(userId, projectId);
+
+        return ResponseEntity.noContent().build();
     }
 }

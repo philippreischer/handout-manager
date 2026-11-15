@@ -25,7 +25,6 @@ public class ProjectService {
 
     @Transactional
     public ProjectSummary createProject(Long userId, String name, String nickName){
-
         Project savedProject = projectRepository.save(new Project(name));
 
         membershipService.createMembership(userId, savedProject.getId(), nickName, MembershipRole.GAME_MASTER);
@@ -35,7 +34,6 @@ public class ProjectService {
 
 
     public List<ProjectSummary> getProjectsForUser(Long userId){
-
         List<Membership> memberships = membershipService.getMembershipsByUserId(userId);
 
         List<Long> projectIds = memberships.stream()
@@ -54,7 +52,6 @@ public class ProjectService {
     }
 
     public ProjectSummary getProject(Long userId, Long projectId){
-
         Membership membership = findMembershipOrThrow(userId, projectId);
 
         Project project = projectRepository.findById(membership.getProjectId())
@@ -66,9 +63,7 @@ public class ProjectService {
 
     @Transactional
     public ProjectSummary renameProject(Long userId, Long projectId, String name){
-
         Membership membership = findMembershipOrThrow(userId, projectId);
-
         requireGameMaster(membership);
 
         Project project = projectRepository.findById(membership.getProjectId())
@@ -76,12 +71,22 @@ public class ProjectService {
                         "Project does not exist: " + membership.getProjectId()));
 
         project.setName(name);
-
         Project savedProject = projectRepository.save(project);
 
         return new ProjectSummary(savedProject.getId(), savedProject.getName(), membership.getMembershipRole());
     }
 
+    @Transactional
+    public void deleteProject(Long userId, Long projectId){
+        Membership membership = findMembershipOrThrow(userId, projectId);
+        requireGameMaster(membership);
+
+        Project project = projectRepository.findById(membership.getProjectId())
+                .orElseThrow(()-> new ProjectNotFoundException(
+                        "Project does not exist: " + membership.getProjectId()));
+
+        projectRepository.delete(project);
+    }
 
     private Membership findMembershipOrThrow(Long userId, Long projectId){
         return membershipService.findMembership(userId, projectId)
@@ -89,11 +94,13 @@ public class ProjectService {
                         "No membership found, userId: " + userId + ", projectId: " + projectId));
     }
 
-
     private void requireGameMaster(Membership membership){
         if (membership.getMembershipRole() != MembershipRole.GAME_MASTER){
                 throw new ProjectAccessDeniedException(
                         "userId: " + membership.getUserId() + ", projectId: " + membership.getProjectId());
         }
     }
+
+
+
 }
