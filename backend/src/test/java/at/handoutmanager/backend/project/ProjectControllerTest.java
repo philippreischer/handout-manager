@@ -19,12 +19,12 @@ import org.springframework.test.web.servlet.MockMvc;
 
 import java.util.List;
 
-import static org.mockito.Mockito.verifyNoInteractions;
-import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.*;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -241,4 +241,43 @@ class ProjectControllerTest {
         verifyNoInteractions(projectServiceMock);
     }
 
+    //deleteProject
+    @Test
+    void shouldReturnNoContent_whenProjectIsDeleted() throws Exception {
+        mockMvc.perform(delete("/api/projects/{projectId}", PROJECT_ID)
+                        .with(authentication(new UsernamePasswordAuthenticationToken(USER_ID, null, List.of()))))
+                .andExpect(status().isNoContent());
+
+        verify(projectServiceMock).deleteProject(USER_ID, PROJECT_ID);
+    }
+
+    @Test
+    void shouldReturnNotFound_whenServiceThrowsProjectNotFoundOnDelete() throws Exception {
+        doThrow(new ProjectNotFoundException("No membership found"))
+                .when(projectServiceMock).deleteProject(USER_ID, PROJECT_ID);
+
+        mockMvc.perform(delete("/api/projects/{projectId}", PROJECT_ID)
+                        .with(authentication(new UsernamePasswordAuthenticationToken(USER_ID, null, List.of()))))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.title").value("Project not found"));
+    }
+
+    @Test
+    void shouldReturnForbidden_whenServiceThrowsAccessDeniedOnDelete() throws Exception {
+        doThrow(new ProjectAccessDeniedException("userId: 1, projectId: 2"))
+                .when(projectServiceMock).deleteProject(USER_ID, PROJECT_ID);
+
+        mockMvc.perform(delete("/api/projects/{projectId}", PROJECT_ID)
+                        .with(authentication(new UsernamePasswordAuthenticationToken(USER_ID, null, List.of()))))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.title").value("Access denied"));
+    }
+
+    @Test
+    void shouldReturnUnauthorized_whenNoTokenIsSentForDelete() throws Exception {
+        mockMvc.perform(delete("/api/projects/{projectId}", PROJECT_ID))
+                .andExpect(status().isUnauthorized());
+
+        verifyNoInteractions(projectServiceMock);
+    }
 }
