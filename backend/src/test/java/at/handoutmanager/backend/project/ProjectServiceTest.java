@@ -188,6 +188,38 @@ class ProjectServiceTest {
         verify(projectRepositoryMock, never()).save(any());
     }
 
+    //deleteProject
+    @Test
+    void shouldDeleteProject_whenUserIsOwner() {
+        when(membershipServiceMock.findMembership(USER_ID, PROJECT_ID))
+                .thenReturn(Optional.of(new Membership(USER_ID, PROJECT_ID, NICK_NAME, MembershipRole.GAME_MASTER)));
+        when(projectRepositoryMock.findById(PROJECT_ID)).thenReturn(Optional.of(savedProject));
+
+        sut.deleteProject(USER_ID, PROJECT_ID);
+
+        verify(projectRepositoryMock).delete(savedProject);
+    }
+
+    @Test
+    void shouldThrowProjectNotFound_whenUserIsNotMemberOnDelete() {
+        when(membershipServiceMock.findMembership(USER_ID, PROJECT_ID)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> sut.deleteProject(USER_ID, PROJECT_ID))
+                .isInstanceOf(ProjectNotFoundException.class);
+
+        verify(projectRepositoryMock, never()).delete(any());
+    }
+
+    @Test
+    void shouldThrowAccessDenied_whenUserIsNotGameMasterOnDelete() {
+        when(membershipServiceMock.findMembership(USER_ID, PROJECT_ID))
+                .thenReturn(Optional.of(new Membership(USER_ID, PROJECT_ID, NICK_NAME, MembershipRole.PLAYER)));
+
+        assertThatThrownBy(() -> sut.deleteProject(USER_ID, PROJECT_ID))
+                .isInstanceOf(ProjectAccessDeniedException.class);
+
+        verify(projectRepositoryMock, never()).delete(any());
+    }
 
     private Project projectWithId(Long id, String name) {
         Project project = new Project(name);
