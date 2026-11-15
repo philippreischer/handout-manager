@@ -8,7 +8,6 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -54,9 +53,7 @@ public class ProjectService {
     public ProjectSummary getProject(Long userId, Long projectId){
         Membership membership = findMembershipOrThrow(userId, projectId);
 
-        Project project = projectRepository.findById(membership.getProjectId())
-                .orElseThrow(()-> new ProjectNotFoundException(
-                        "Project does not exist: " + membership.getProjectId()));
+        Project project = findProjectOrThrow(membership.getProjectId());
 
         return new ProjectSummary(project.getId(), project.getName(), membership.getMembershipRole());
     }
@@ -66,9 +63,7 @@ public class ProjectService {
         Membership membership = findMembershipOrThrow(userId, projectId);
         requireGameMaster(membership);
 
-        Project project = projectRepository.findById(membership.getProjectId())
-                .orElseThrow(()-> new ProjectNotFoundException(
-                        "Project does not exist: " + membership.getProjectId()));
+        Project project = findProjectOrThrow(membership.getProjectId());
 
         project.setName(name);
         Project savedProject = projectRepository.save(project);
@@ -81,9 +76,7 @@ public class ProjectService {
         Membership membership = findMembershipOrThrow(userId, projectId);
         requireGameMaster(membership);
 
-        Project project = projectRepository.findById(membership.getProjectId())
-                .orElseThrow(()-> new ProjectNotFoundException(
-                        "Project does not exist: " + membership.getProjectId()));
+        Project project = findProjectOrThrow(membership.getProjectId());
 
         projectRepository.delete(project);
     }
@@ -101,6 +94,10 @@ public class ProjectService {
         }
     }
 
-
+    private Project findProjectOrThrow(Long projectId){
+        return projectRepository.findById(projectId)
+                    .orElseThrow(()-> new ProjectNotFoundException(
+                            "Project does not exist: " + projectId));
+    }
 
 }
