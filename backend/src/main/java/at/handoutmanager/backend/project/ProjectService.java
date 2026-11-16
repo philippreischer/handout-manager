@@ -81,6 +81,18 @@ public class ProjectService {
         projectRepository.delete(project);
     }
 
+    @Transactional
+    public void deleteProjectsOwnedBy(Long userId){
+        List<Membership> memberships = membershipService.getMembershipsByUserId(userId);
+
+        List<Long> projectIds = memberships.stream()
+                .filter(membership -> membership.getMembershipRole() == MembershipRole.GAME_MASTER)
+                .map(Membership::getProjectId)
+                .toList();
+
+        projectRepository.deleteAllByIdInBatch(projectIds);
+    }
+
     private Membership findMembershipOrThrow(Long userId, Long projectId){
         return membershipService.findMembership(userId, projectId)
                 .orElseThrow(()-> new ProjectNotFoundException(
