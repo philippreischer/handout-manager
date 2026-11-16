@@ -221,6 +221,18 @@ class ProjectServiceTest {
         verify(projectRepositoryMock, never()).delete(any());
     }
 
+    //deleteProjectsOwnedBy
+    @Test
+    void shouldDeleteOnlyGameMasterProjects_whenUserHasMixedRoles() {
+        when(membershipServiceMock.getMembershipsByUserId(USER_ID)).thenReturn(List.of(
+                new Membership(USER_ID, PROJECT_ID, NICK_NAME, MembershipRole.GAME_MASTER),
+                new Membership(USER_ID, SECOND_PROJECT_ID, NICK_NAME, MembershipRole.PLAYER)));
+
+        sut.deleteProjectsOwnedBy(USER_ID);
+
+        verify(projectRepositoryMock).deleteAllByIdInBatch(List.of(PROJECT_ID));
+    }
+
     private Project projectWithId(Long id, String name) {
         Project project = new Project(name);
         ReflectionTestUtils.setField(project, "id", id);
