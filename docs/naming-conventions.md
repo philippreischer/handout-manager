@@ -1,6 +1,6 @@
 # handout-manager — Naming Conventions Cheatsheet
 
-**v1.1 · in Verwendung**
+**v1.2 · in Verwendung**
 
 Analog zum A11yForge-Cheatsheet. Generische Konventionen übernommen, Domänen-Glossar neu auf dieses Projekt gemünzt.
 
@@ -104,7 +104,27 @@ Merke: **Handout** und **Note** sind *Werte* von `ResourceType`, keine eigenen E
 - **DTOs:** Suffix `Request` / `Response` **+ `DTO`** — `ProjectCreateRequestDTO`, `ResourceResponseDTO`, `LoginRequestDTO`, `LoginResponseDTO`.
   DTOs leben auf der **Controller-Ebene**, nicht im Service: Ein Service nimmt Parameter
   entgegen, damit seine Signatur nicht von der HTTP-API abhängt. Braucht ein Service ein
-  zusammengesetztes Ergebnis, ist das ein internes Record ohne `DTO`-Suffix (z. B. `AuthTokens`).
+  zusammengesetztes Ergebnis, ist das ein internes Record ohne `DTO`-Suffix (z. B. `AuthTokens`,
+  `ProjectSummary`). Dass internes Record und DTO gerade gleich aussehen, ist kein Grund, eines
+  zu streichen — sie dürfen sich unabhängig ändern.
+- **Bringt das Framework eine gleichnamige Klasse mit, bekommt die eigene das Feature als
+  Präfix.** `ProjectAccessDeniedException` statt `AccessDeniedException` (gibt es in Spring
+  Security). Dieselbe Überlegung wie bei `email` statt `mail`.
+- **Mit dem Rückgabewert von `save` weiterarbeiten**, nicht mit dem übergebenen Objekt. Bei einem
+  neuen Objekt ist es dasselbe, bei einem bestehenden liefert Spring Data eine andere Instanz.
+  Die Gewohnheit kostet nichts und verhindert, beim Ändern mit einer veralteten Instanz zu
+  arbeiten. In einer `@Transactional`-Methode würde Hibernate eine geladene, geänderte Entität
+  auch ohne `save` schreiben (*Dirty Checking*) — das `save` steht trotzdem da, damit man sieht,
+  dass gespeichert wird.
+- **Zugriffsprüfungen als private Hilfsmethoden mit sprechendem Namen:** `…OrThrow` für „holen
+  oder 404“ (`findMembershipOrThrow`, `findProjectOrThrow`), `require…` für eine Bedingung, die
+  sonst 403 ergibt (`requireGameMaster`). Herausziehen, sobald dieselbe Zeile ein drittes Mal
+  auftaucht.
+- **Mehrere Datensätze nicht einzeln laden oder löschen.** IDs sammeln, dann `findAllById` bzw.
+  `deleteAllByIdInBatch` — eine Abfrage statt einer pro Datensatz (N+1). Zuordnen über eine Map
+  ID → Objekt, nicht über die Position in der Liste.
+- **Lambda-Parameter heißen in der Einzahl** und nie wie die Liste, über die sie laufen:
+  `memberships.stream().filter(membership -> …)`. Java verbietet den gleichen Namen ohnehin.
 
 ### Package-Struktur (feature-basiert)
 
@@ -260,6 +280,18 @@ hält.
 - **Eine Migration, die eine Spalte nachrüstet, füllt Bestandsdaten vor dem Constraint.**
   Reihenfolge: Spalte anlegen, vorhandene Zeilen auf einen sinnvollen Wert setzen, dann den
   CHECK ergänzen. Umgekehrt scheitert die Migration an genau den Daten, die sie reparieren soll.
+- **Eine ausgeführte Migration wird nie geändert.** Flyway prüft Prüfsummen und bricht beim Start
+  ab. Korrekturen kommen als neue Migration (`V9__add_on_delete_rules.sql`).
+- **Jeder Fremdschlüssel bekommt ein bewusstes `ON DELETE`.** Ohne Angabe blockiert PostgreSQL das
+  Löschen der referenzierten Zeile — das fällt erst als 500 an einer ganz anderen Stelle auf.
+  Und eine Kaskade wirkt nur, wenn **jedes** Glied der Kette kaskadiert. Wo blockierend gewollt
+  ist (`resource.created_by`), steht der Grund in der Planungsdatei.
+- **`ON DELETE` eines bestehenden Fremdschlüssels ändern = entfernen und neu anlegen**, in einer
+  `ALTER TABLE`-Anweisung, mit unverändertem Constraint-Namen:
+  `ALTER TABLE membership DROP CONSTRAINT fk_membership_user_id, ADD CONSTRAINT fk_membership_user_id FOREIGN KEY (user_id) REFERENCES user_account (id) ON DELETE CASCADE;`
+- **Nullable heißt genau ein Zustand für „leer“.** Eine optionale Textspalte (`nick_name`) speichert
+  `null`, nie `""` oder reinen Leerraum — normalisiert an genau einer Stelle im Service. Ersatztexte
+  für die Anzeige gehören ins Frontend, nicht in die Datenbank.
 
 > **Abweichung von A11yForge (festgelegt):** Dort wurden Enum-Werte als lowercase snake_case (`'pending'`) gespeichert. Hier speichern wir sie als **UPPER_SNAKE** (`'GAME_MASTER'`), damit `@Enumerated(EnumType.STRING)` ohne `AttributeConverter` direkt passt.
 
@@ -317,6 +349,20 @@ beantworten würde also einen Refresh anstoßen, der ein Refresh-Token verbrauch
 irgendetwas abgelaufen war. Deshalb gibt es `PasswordMismatchException` (403) getrennt von
 `InvalidCredentialsException` (401).
 
+**404 und 403 sind ebenfalls nicht austauschbar — und die Reihenfolge der Prüfung zählt.** Wer
+nicht Mitglied ist, bekommt **404**, egal ob die Ressource existiert: „gibt es nicht“ und „gehört
+dir nicht“ sehen exakt gleich aus, gleicher Code, gleicher Titel, Unterscheidung nur im Log. Wer
+Mitglied ist, aber nicht die nötige Rolle hat, bekommt **403** — er kennt die Ressource ohnehin.
+Deshalb immer erst Mitgliedschaft prüfen, dann Rolle; umgekehrt sähe ein Fremder ein 403.
+
+**IDs im Pfad sind kein Geheimnis, Tokens schon.** Eine fortlaufende ID darf in der URL stehen,
+weil die Sicherheit an der Prüfung im Service hängt, nicht an der ID. Ein `findById` ohne
+Zugriffsprüfung wäre der klassische Fehler (IDOR). Geheimnisse — Tokens, Passwörter — gehören nie
+in die URL: Sie landen in Server-Logs, Verlauf und Referrer.
+
+**Statuscodes beim Erfolg:** `POST`, das etwas anlegt → **201**; `GET`, `PATCH` mit Nutzdaten →
+**200**; `DELETE` → **204** ohne Body. Eine leere Liste ist **200 mit `[]`**, kein 404.
+
 **Erfolgsantworten tragen keine Meldungstexte.** Ein 204 oder ein 200 mit Nutzdaten genügt; die
 Formulierung für den Benutzer gehört ins Frontend. Eine Bestätigung über einen Seitenwechsel
 hinweg läuft über einen Query-Parameter (`/login?deleted=1`, `/login?reset=1`), nicht über
@@ -337,6 +383,9 @@ PATCH  /api/users/me/password
 DELETE /api/users/me
 GET    /api/projects
 POST   /api/projects
+GET    /api/projects/{projectId}
+PATCH  /api/projects/{projectId}/name
+DELETE /api/projects/{projectId}
 POST   /api/projects/{projectId}/memberships
 GET    /api/projects/{projectId}/resources
 POST   /api/projects/{projectId}/resources
@@ -393,6 +442,22 @@ POST   /api/resources/{resourceId}/permissions
   aktuelles, `sendPasswordReset(recipient, resetUrl)` das Token ins Empfängerfeld. Ein Test, der
   nichts anderes tut als die Argumente festzunageln, kostet fünf Zeilen und deckt den einzigen
   Fehler ab, den so ein Aufruf überhaupt machen kann.
+- **Testwerte so wählen, dass falscher Code ein anderes Ergebnis liefert.** Ein Wert, der zufällig
+  dem Standardfall entspricht, beweist nichts. Deshalb verschiedene Werte für `USER_ID` und
+  `PROJECT_ID`, `PLAYER` statt `GAME_MASTER`, wo die Rolle aus der Membership kommen soll (eine
+  fest eingebaute `GAME_MASTER`-Rolle bliebe sonst unentdeckt), ein `NEW_PROJECT_NAME`, der sich
+  vom alten unterscheidet, und ein Exception-Text, der sich vom erwarteten Titel unterscheidet.
+- **Private Hilfsmethoden werden durch *jede* öffentliche Methode getestet, die sie benutzt.**
+  Dass `findMembershipOrThrow` funktioniert, belegt der Test von `getProject` — dass
+  `renameProject` sie überhaupt aufruft, belegt er nicht. Tests prüfen Verhalten einer Methode,
+  nicht ihren Code.
+- **Eine `void`-Methode prüft man an ihrer Wirkung.** Dass nichts zurückkommt, garantiert der
+  Compiler. Geprüft wird per `verify`, was sie ausgelöst hat — etwa `delete` mit genau dem
+  geladenen Objekt.
+- **Bei Fehlerfällen auch prüfen, dass *nichts* geschehen ist:** 404 und 403 jeweils mit
+  `verify(…, never()).save(any())` bzw. `.delete(any())`.
+- **Gleiche Fälle an verschiedenen Endpunkten bekommen den Endpunkt im Namen**, damit die Namen
+  eindeutig bleiben: `…_whenNoTokenIsSentForRename()`, `…_whenUserIsNotMemberOnDelete()`.
 
 ### Backend-Tests — Werkzeuge
 
@@ -468,6 +533,22 @@ POST   /api/resources/{resourceId}/permissions
   Meldung nennt nur den Präfix — also `getFailure().rootCause()` statt `getFailure()`. Und die
   Standard-Meldung einer Constraint-Annotation folgt der JVM-Sprache: Prüfe entweder nicht
   übersetzten Text (`on field 'secret'`) oder den eigenen `message`-Wert.
+- **Ein ungestubbter Mock liefert `null`, leere Listen und leere `Optional`s.** Gibt der Code mit
+  dem Rückgabewert von `save` weiter, braucht der Test ein `when(…save(any())).thenReturn(…)`,
+  sonst endet er in einer `NullPointerException`. Umgekehrt schadet ein Stub, der nie benutzt
+  wird (etwa im 400-Test, wo die Validierung vorher greift): Er erweckt den falschen Eindruck,
+  der Service sei beteiligt.
+- **Zwei `thenReturn` hintereinander heißen „erster Aufruf, zweiter Aufruf“**, nicht „ersetze“.
+  Wird die Methode nur einmal aufgerufen, gilt nur der erste Wert.
+- **`void`-Methoden werfen im Mock über `doThrow(…).when(mock).methode(…)`.** `when(…).thenThrow`
+  braucht einen Rückgabewert und kompiliert bei `void` nicht.
+- **Ein Controller-Test kann nicht unterscheiden, *warum* der Service wirft.** „Projekt fehlt“ und
+  „Projekt gehört einem anderen“ sind dort derselbe Test: Der Mock wirft
+  `ProjectNotFoundException`. Die Unterscheidung gehört in den Service-Test, die Gleichheit von
+  außen in den Integrationstest.
+- **IDs ohne Datenbank:** ein echtes Objekt mit `new` bauen, die ID per `ReflectionTestUtils`
+  setzen und den Mock dieses Objekt bei `save`/`findById` zurückgeben lassen. Kein Setter für die
+  ID im Produktionscode, und keine gemockte Entity — die ist ein Datenhalter.
 
 ### Frontend-Tests — Werkzeuge
 
@@ -577,4 +658,4 @@ Zugehörigkeit: Layout, Navigation, `App.vue`, geteilte Formularbausteine.
 
 ---
 
-*handout-manager · Naming Conventions · v1.1*
+*handout-manager · Naming Conventions · v1.2*
