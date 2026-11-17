@@ -1,0 +1,1 @@
+export type MembershipRole = 'GAME_MASTER' | 'PLAYER'
