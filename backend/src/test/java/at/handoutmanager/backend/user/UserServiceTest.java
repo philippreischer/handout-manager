@@ -1,11 +1,9 @@
 package at.handoutmanager.backend.user;
 
+import at.handoutmanager.backend.project.ProjectService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.ArgumentCaptor;
-import org.mockito.Captor;
-import org.mockito.InjectMocks;
-import org.mockito.Mock;
+import org.mockito.*;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.util.ReflectionTestUtils;
@@ -37,6 +35,9 @@ class UserServiceTest {
 
     @Mock
     private PasswordEncoder passwordEncoder;
+
+    @Mock
+    private ProjectService projectService;
 
     @InjectMocks
     private UserService sut;
@@ -167,7 +168,6 @@ class UserServiceTest {
     }
 
     // Account deletion
-
     @Test
     void shouldDeleteUser_whenPasswordIsCorrect() {
         User user = existingUser();
@@ -176,7 +176,9 @@ class UserServiceTest {
 
         sut.deleteCurrentUser(USER_ID, PASSWORD);
 
-        verify(userRepository).delete(user);
+        InOrder inOrder = inOrder(projectService, userRepository);
+        inOrder.verify(projectService).deleteProjectsOwnedBy(USER_ID);
+        inOrder.verify(userRepository).delete(user);
     }
 
     @Test
@@ -187,6 +189,7 @@ class UserServiceTest {
         assertThatThrownBy(() -> sut.deleteCurrentUser(USER_ID, WRONG_PASSWORD))
                 .isInstanceOf(PasswordMismatchException.class);
 
+        verify(projectService, never()).deleteProjectsOwnedBy(any());
         verify(userRepository, never()).delete(any());
     }
 

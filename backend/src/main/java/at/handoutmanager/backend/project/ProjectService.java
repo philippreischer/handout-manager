@@ -1,0 +1,115 @@
+package at.handoutmanager.backend.project;
+
+import at.handoutmanager.backend.membership.Membership;
+import at.handoutmanager.backend.membership.MembershipRole;
+import at.handoutmanager.backend.membership.MembershipService;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.util.List;
+import java.util.Map;
+import java.util.function.Function;
+import java.util.stream.Collectors;
+
+@Service
+public class ProjectService {
+
+    private final ProjectRepository projectRepository;
+    private final MembershipService membershipService;
+
+    public ProjectService(ProjectRepository projectRepository, MembershipService membershipService) {
+        this.projectRepository = projectRepository;
+        this.membershipService = membershipService;
+    }
+
+    @Transactional
+    public ProjectSummary createProject(Long userId, String name, String nickName){
+        Project savedProject = projectRepository.save(new Project(name));
+
+        membershipService.createMembership(userId, savedProject.getId(), nickName, MembershipRole.GAME_MASTER);
+
+        return new ProjectSummary(savedProject.getId(), savedProject.getName(), MembershipRole.GAME_MASTER);
+    }
+
+
+    public List<ProjectSummary> getProjectsForUser(Long userId){
+        List<Membership> memberships = membershipService.getMembershipsByUserId(userId);
+
+        List<Long> projectIds = memberships.stream()
+                .map(Membership::getProjectId)
+                .toList();
+
+        Map<Long, Project> projectsById = projectRepository.findAllById(projectIds).stream()
+                .collect(Collectors.toMap(Project::getId, Function.identity()));
+
+        return memberships.stream()
+                .map(membership -> {
+                    Project project = projectsById.get(membership.getProjectId());
+                    return new ProjectSummary(project.getId(), project.getName(), membership.getMembershipRole());
+                })
+                .toList();
+    }
+
+    public ProjectSummary getProject(Long userId, Long projectId){
+        Membership membership = findMembershipOrThrow(userId, projectId);
+
+        Project project = findProjectOrThrow(membership.getProjectId());
+
+        return new ProjectSummary(project.getId(), project.getName(), membership.getMembershipRole());
+    }
+
+    @Transactional
+    public ProjectSummary renameProject(Long userId, Long projectId, String name){
+        Membership membership = findMembershipOrThrow(userId, projectId);
+        requireGameMaster(membership);
+
+        Project project = findProjectOrThrow(membership.getProjectId());
+
+        project.setName(name);
+        Project savedProject = projectRepository.save(project);
+
+        return new ProjectSummary(savedProject.getId(), savedProject.getName(), membership.getMembershipRole());
+    }
+
+    @Transactional
+    public void deleteProject(Long userId, Long projectId){
+        Membership membership = findMembershipOrThrow(userId, projectId);
+        requireGameMaster(membership);
+
+        Project project = findProjectOrThrow(membership.getProjectId());
+
+        projectRepository.delete(project);
+    }
+
+    @Transactional
+    public void deleteProjectsOwnedBy(Long userId){
+        List<Membership> memberships = membershipService.getMembershipsByUserId(userId);
+
+        List<Long> projectIds = memberships.stream()
+                .filter(membership -> membership.getMembershipRole() == MembershipRole.GAME_MASTER)
+                .map(Membership::getProjectId)
+                .toList();
+
+        projectRepository.deleteAllByIdInBatch(projectIds);
+    }
+
+    private Membership findMembershipOrThrow(Long userId, Long projectId){
+        return membershipService.findMembership(userId, projectId)
+                .orElseThrow(()-> new ProjectNotFoundException(
+                        "No membership found, userId: " + userId + ", projectId: " + projectId));
+    }
+
+    private void requireGameMaster(Membership membership){
+        if (membership.getMembershipRole() != MembershipRole.GAME_MASTER){
+                throw new ProjectAccessDeniedException(
+                        "userId: " + membership.getUserId() + ", projectId: " + membership.getProjectId());
+        }
+    }
+
+    private Project findProjectOrThrow(Long projectId){
+        return projectRepository.findById(projectId)
+                    .orElseThrow(()-> new ProjectNotFoundException(
+                            "Project does not exist: " + projectId));
+    }
+
+}

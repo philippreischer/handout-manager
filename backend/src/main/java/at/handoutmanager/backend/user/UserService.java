@@ -1,9 +1,11 @@
 package at.handoutmanager.backend.user;
 
+import at.handoutmanager.backend.project.ProjectService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Locale;
 import java.util.Optional;
@@ -15,11 +17,14 @@ public class UserService {
 
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
+    private final ProjectService projectService;
 
     public UserService(UserRepository userRepository,
-                       PasswordEncoder passwordEncoder) {
+                       PasswordEncoder passwordEncoder,
+                       ProjectService projectService) {
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
+        this.projectService = projectService;
     }
 
     private String normalizeEmail(String email){
@@ -83,6 +88,7 @@ public class UserService {
         userRepository.save(user);
     }
 
+    @Transactional
     public void deleteCurrentUser(Long id, String rawPassword){
         User user = findUserById(id);
 
@@ -91,6 +97,7 @@ public class UserService {
             throw new PasswordMismatchException("Delete current user");
         }
 
+        projectService.deleteProjectsOwnedBy(id);
         userRepository.delete(user);
         log.info("Account deleted for user {}", id);
     }
