@@ -2,6 +2,8 @@ import { createRouter, createWebHistory } from 'vue-router'
 import { useAuthStore } from '@/stores/authStore'
 import AuthView from '@/views/AuthView.vue'
 import HomeView from '@/views/HomeView.vue'
+import ProjectsView from '@/views/ProjectsView.vue'
+import ProjectView from '@/views/ProjectView.vue'
 import LoginForm from '@/components/auth/LoginForm.vue'
 import RegisterForm from '@/components/auth/RegisterForm.vue'
 import ForgotPasswordForm from '@/components/auth/ForgotPasswordForm.vue'
@@ -60,6 +62,18 @@ const router = createRouter({
       path: '/settings',
       name: 'settings',
       component: () => import('@/views/SettingsView.vue'),
+      meta: { requiresAuth: true },
+    },
+    {
+      path: '/projects',
+      name: 'projects',
+      component: ProjectsView,
+      meta: { requiresAuth: true },
+    },
+    {
+      path: '/projects/:projectId',
+      name: 'project',
+      component: ProjectView,
       meta: { requiresAuth: true },
     },
   ],
