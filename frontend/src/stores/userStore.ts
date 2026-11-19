@@ -31,9 +31,8 @@ export const useUserStore = defineStore('user', () => {
   }
 
   async function deleteAccount(password: string) {
-    const authStore = useAuthStore()
     await client.delete('/api/users/me', { data: { password } })
-    clearUser()
+    const authStore = useAuthStore()
     authStore.clearSession()
   }
 
