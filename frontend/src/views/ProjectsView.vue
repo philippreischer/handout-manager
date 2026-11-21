@@ -3,11 +3,13 @@ import { onMounted, ref } from 'vue'
 import { useProjectStore } from '@/stores/projectStore'
 import { extractErrorMessage } from '@/api/errorMessage'
 import ProjectCard from '@/components/project/ProjectCard.vue'
+import CreateProjectForm from '@/components/project/CreateProjectForm.vue'
 
 const projectStore = useProjectStore()
 
 const isLoading = ref(true)
 const errorMessage = ref<string | null>(null)
+const isCreateFormOpen = ref(false)
 
 onMounted(async () => {
   try {
@@ -22,7 +24,22 @@ onMounted(async () => {
 
 <template>
   <div class="mx-auto min-h-[calc(100vh-3.5rem)] w-full max-w-3xl space-y-6 p-4">
-    <h1 class="pt-4 text-2xl font-bold text-slate-100">Projects</h1>
+    <div class="flex items-center justify-between pt-4">
+      <h1 class="text-2xl font-bold text-slate-100">Projects</h1>
+      <button
+        type="button"
+        :aria-expanded="isCreateFormOpen"
+        class="rounded-md bg-emerald-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-emerald-500"
+        @click="isCreateFormOpen = !isCreateFormOpen"
+      >
+        New project
+      </button>
+    </div>
+
+    <CreateProjectForm
+      v-if="isCreateFormOpen"
+      class="rounded-lg border border-slate-700 bg-slate-800 p-4"
+    />
 
     <p v-if="isLoading" class="text-slate-400">Loading projects…</p>
 
