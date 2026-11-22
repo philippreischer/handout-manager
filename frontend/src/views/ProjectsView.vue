@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { nextTick, onMounted, ref, useTemplateRef } from 'vue'
 import { useProjectStore } from '@/stores/projectStore'
 import { extractErrorMessage } from '@/api/errorMessage'
 import ProjectCard from '@/components/project/ProjectCard.vue'
@@ -9,7 +9,18 @@ const projectStore = useProjectStore()
 
 const isLoading = ref(true)
 const errorMessage = ref<string | null>(null)
+const createDialog = useTemplateRef<HTMLDialogElement>('createDialog')
 const isCreateFormOpen = ref(false)
+
+async function openCreateDialog() {
+  isCreateFormOpen.value = true
+  await nextTick()
+  createDialog.value?.showModal()
+}
+
+function closeCreateDialog() {
+  createDialog.value?.close()
+}
 
 onMounted(async () => {
   try {
@@ -28,18 +39,22 @@ onMounted(async () => {
       <h1 class="text-2xl font-bold text-slate-100">Projects</h1>
       <button
         type="button"
-        :aria-expanded="isCreateFormOpen"
+        aria-haspopup="dialog"
         class="rounded-md bg-emerald-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-emerald-500"
-        @click="isCreateFormOpen = !isCreateFormOpen"
+        @click="openCreateDialog"
       >
         New project
       </button>
     </div>
 
-    <CreateProjectForm
-      v-if="isCreateFormOpen"
-      class="rounded-lg border border-slate-700 bg-slate-800 p-4"
-    />
+    <dialog
+      ref="createDialog"
+      aria-labelledby="create-project-heading"
+      class="m-auto w-full max-w-md rounded-lg border border-slate-700 bg-slate-800 p-6 text-slate-100 backdrop:bg-black/60"
+      @close="isCreateFormOpen = false"
+    >
+      <CreateProjectForm v-if="isCreateFormOpen" @cancel="closeCreateDialog" />
+    </dialog>
 
     <p v-if="isLoading" class="text-slate-400">Loading projects…</p>
 
