@@ -3,7 +3,7 @@ import { ref } from 'vue'
 import { useProjectStore } from '@/stores/projectStore'
 import { extractErrorMessage } from '@/api/errorMessage'
 import type { ProjectResponse } from '@/types/project'
-import ProjectNameField from '@/components/ui/ProjectNameField.vue';
+import ProjectNameField from '@/components/ui/ProjectNameField.vue'
 
 const projectStore = useProjectStore();
 
