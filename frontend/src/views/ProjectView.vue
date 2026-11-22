@@ -78,6 +78,11 @@ onMounted(async () => {
           </svg>
         </button>
       </header>
+
+      <ProjectSettings
+        v-if="isGameMaster && isSettingsOpen"
+        :project="projectStore.currentProject"
+      />      
     </template>
   </div>
 </template>
