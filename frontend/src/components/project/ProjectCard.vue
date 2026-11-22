@@ -1,18 +1,13 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import type { ProjectResponse } from '@/types/project'
-import type { MembershipRole } from '@/types/membership'
+import { formatMembershipRole } from '@/utils/formatMembershipRole'
 
 const props = defineProps<{
   project: ProjectResponse
 }>()
 
-const ROLE_LABELS: Record<MembershipRole, string> = {
-  GAME_MASTER: 'Game Master',
-  PLAYER: 'Player',
-}
-
-const roleLabel = computed(() => ROLE_LABELS[props.project.membershipRole])
+const roleLabel = computed(() => formatMembershipRole(props.project.membershipRole))
 </script>
 
 <template>
