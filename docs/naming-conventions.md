@@ -1,6 +1,6 @@
 # handout-manager — Naming Conventions Cheatsheet
 
-**v1.2 · in Verwendung**
+**v1.3 · in Verwendung**
 
 Analog zum A11yForge-Cheatsheet. Generische Konventionen übernommen, Domänen-Glossar neu auf dieses Projekt gemünzt.
 
@@ -179,7 +179,9 @@ hält.
 | Event-Handler | `on` / `handle` + Verb | `handleResourceCreate()` |
 | Router-Meta-Feld | camelCase | `requiresAuth`, `guestOnly` |
 | Konstante | UPPER_SNAKE | `DEFAULT_THEME` |
-| Util-Datei | camelCase.ts | `formatDate.ts` |
+| Util-Datei | camelCase.ts, unter `utils/` | `formatMembershipRole.ts` |
+| Typ-Datei | ein Bereich je Datei, unter `types/` | `types/project.ts`, `types/membership.ts` |
+| Route mit Parameter | Name in der Einzahl, Parameter wie im Backend | `project` → `/projects/:projectId` |
 
 - **Store-Datei gegen Store-Export:** Die Datei heißt `authStore.ts`, nicht `useAuthStore.ts` —
   ein `use`-Präfix beschreibt eine Funktion, keine Datei. Der Export behält es.
@@ -248,6 +250,87 @@ hält.
   `ChangeUserNameRequest`-Interface eine zweite Kopie derselben Information — ein Tippfehler
   fiele schon an den Parametern auf. Erst wenn eine Komponente ein Objekt befüllt und
   durchreicht, verdient der Typ einen Namen.
+
+### Stores und Daten
+
+- **URLs mit Variablen sind Template-Literals:** `` `/api/projects/${projectId}` `` mit Backticks.
+  In einfachen Anführungszeichen wird `{projectId}` nicht ersetzt — der Request geht wörtlich an
+  `/api/projects/{projectId}`, ohne Compiler-Fehler.
+- **Eine ID ist nie ein Array-Index.** Einträge über `findIndex((x) => x.id === id)` oder `filter`
+  finden. Und `findIndex` liefert `-1`, wenn nichts passt: `array[-1] = …` legt still eine
+  Eigenschaft `"-1"` an, `splice(-1, 1)` entfernt das **letzte** Element. Beim Entfernen ist
+  `filter` deshalb die bessere Wahl — es kennt keinen Index und keinen Sonderfall.
+- **Vor `sort()` kopieren.** `sort()` verändert das Array selbst; auf einer Store-Liste sortiert es
+  die Liste für alle Ansichten um, und ein `computed`, das seine Quelle verändert, ist in Vue ein
+  Fehler. `[...liste].sort(…)` oder `toSorted(…)`.
+- **Listen starten als `[]`, nicht `null`.** „Nichts da“ ist eine leere Liste; Ansichten laufen ohne
+  `null`-Prüfung darüber. Einzelne Objekte (`currentProject`) dürfen `null` sein.
+- **Eine Action, deren Ergebnis der Aufrufer braucht, gibt `response.data` zurück** — nicht ein
+  State-Feld. Der State hat oft den Typ `… | null`, die Antwort nicht.
+- **Alle Stores werden an einer Stelle geleert: `clearSession`.** Jeder Weg aus der Sitzung —
+  Logout, Kontolöschen, gescheiterter Refresh — endet dort. Ein neuer Store ergänzt nur diese eine
+  Stelle; ein Leeren in jedem einzelnen Abmeldeweg vergisst früher oder später einen.
+- **Daten, die nur bestimmte Seiten brauchen, lädt die Seite beim Öffnen** — nicht `bootstrap()`.
+  `bootstrap()` läuft nur beim Neuladen, nicht nach dem Login, und jeder Request dort verlängert
+  den Start. Was jede Seite braucht (das Profil für die Navbar), gehört dorthin.
+
+### Routen und Komponenten
+
+- **Router-Parameter sind Strings** (genauer `string | string[]`). Vor der Verwendung umwandeln und
+  prüfen: `Number(route.params.projectId)` ergibt bei `/projects/abc` `NaN` —
+  `Number.isInteger(…) && > 0`, und eine ungültige ID ohne Request wie „nicht gefunden“ behandeln.
+- **Ein `computed` oder `ref` in einer Bedingung braucht `.value`.** `if (isValidProjectId)` prüft
+  das Objekt, und jedes Objekt ist wahr — die Bedingung tut still nichts. Im Template entfällt
+  `.value`, im Script nie.
+- **Bei Daten mit veraltetem Stand: erst laden, dann Fehler, dann Inhalt.** In dieser Reihenfolge
+  im Template geprüft, ist ein veralteter Eintrag aus dem Store nie zu sehen.
+  `v-else-if="store.current"` statt `v-else`, damit TypeScript darunter weiß, dass es nicht `null`
+  ist.
+- **Attribute an einer Komponente fallen auf ihr äußerstes Element durch.** Eine `id` an der
+  Komponente *und* an deren Wurzelelement ergibt dieselbe `id` zweimal im DOM. Die `id` gehört an
+  die Komponente, die sie beschreibt.
+- **Eine Komponente innerhalb einer View trägt kein Seitenlayout** (`min-h-[calc(100vh-…)]`,
+  `mx-auto`, äußeres `p-4`). Das hat die View schon; doppelt ergibt es Leerflächen und Einrückung.
+- **Überschriften-Ebenen gelten über Komponentengrenzen.** Eine Seite hat ein `<h1>`; eine
+  eingehängte Hülle beginnt bei `<h2>`, ihre Abschnitte bei `<h3>`. Screenreader-Nutzer springen
+  über Überschriften durch die Seite.
+- **Eine klickbare Karte ist ein `RouterLink`**, kein `div` mit `@click`: nur ein echtes `<a>` ist
+  per Tastatur erreichbar, wird als Link vorgelesen und lässt Strg+Klick zu. Keine Buttons in einem
+  Link — ungültiges HTML, und ein Klick löst beides aus.
+- **Anzeige-Komponenten laden nichts.** Eine Karte bekommt ihre Daten als Prop; Laden und Store-
+  Zugriff gehören in die View. So ist sie überall einsetzbar und ohne Store-Mock testbar.
+- **Beschriftungen für Enum-Werte über `Record<Union, string>`**, nicht über `if` oder Ternary:
+  Kommt ein Wert dazu, meldet TypeScript die fehlende Beschriftung. Bei der zweiten Verwendung nach
+  `utils/` ziehen (`formatMembershipRole`).
+- **Ein vorbefülltes Formularfeld ist eine Kopie:** `ref(props.project.name)` liest einmal beim
+  Erzeugen. Eine Verknüpfung würde die Eingabe beim Tippen überschreiben, sobald sich der Store
+  ändert.
+- **`autocomplete`-Werte haben feste Bedeutungen.** `name` heißt „vollständiger Name einer Person“,
+  `nickname` „eigener Spitzname“. Für ein Feld, das keinem dieser Werte entspricht (Projektname,
+  Rollenname), `autocomplete="off"` — sonst schlägt der Browser Unpassendes vor.
+
+### Dialoge und Barrierefreiheit
+
+- **Dialoge über das native `<dialog>` mit `showModal()`**, kein eigenes Overlay mit `z-index`. Der
+  Browser erledigt Top Layer, gesperrten Hintergrund, Fokus hinein und zurück und Escape. Gestaltet
+  wird der Hintergrund mit `backdrop:`; `m-auto` und eine Hintergrundfarbe sind nötig, weil
+  Tailwinds Reset die Browser-Stile entfernt.
+- **Formular im Dialog mit `v-if`**, gesteuert über das `close`-Event — das `<dialog>` verlässt das
+  DOM nie, ohne `v-if` bliebe der alte Zustand stehen. Zum Öffnen erst das `v-if` setzen, dann
+  `await nextTick()`, dann `showModal()`.
+- **Der Dialog bekommt einen Namen** über `aria-labelledby` auf seine Überschrift; der öffnende
+  Button `aria-haspopup="dialog"`. `aria-expanded` ist für Buttons, die etwas in der Seite
+  aufklappen.
+- **Jeder Button in einem `<form>` ohne `type` ist ein Submit-Button.** Abbrechen und Umschalter
+  brauchen `type="button"`.
+- **Ein reiner Symbol-Button braucht `aria-label`**, das Symbol `aria-hidden="true"`. Ohne Label hat
+  der Button für einen Screenreader keinen Namen.
+- **Meldungen ohne Fokuswechsel ansagen:** `role="alert"` für Fehler (sofort, unterbricht),
+  `role="status"` für Bestätigungen (nach dem Satz). Ein `status`, der per `v-if` erst eingefügt
+  wird, sagen manche Screenreader nicht zuverlässig an; robust ist ein Element, das immer da ist und
+  nur seinen Text wechselt.
+- **Ein Bestätigungsschritt gegen Versehen:** den Namen eintippen lassen, exakter Vergleich inklusive
+  Groß- und Kleinschreibung. Eine bloße Rückfrage wird irgendwann blind weggeklickt.
 
 ---
 
@@ -602,6 +685,20 @@ POST   /api/resources/{resourceId}/permissions
 - **jsdom erzwingt `required` und `minlength` nicht** bei einem direkt ausgelösten
   Submit-Event. HTML-Validierung lässt sich damit nicht prüfen; verbindlich ist ohnehin die
   Bean-Validation im Backend, die ihren eigenen Test hat.
+- **jsdom sendet ein Formular beim Klick auf einen Button nicht ab.** Ein Test „Abbrechen legt
+  nichts an“ per Klick bleibt deshalb grün, auch ohne `type="button"`. **Was jsdom nicht
+  nachbildet, prüft man an der Ursache:** `expect(button.attributes('type')).toBe('button')`.
+- **`toEqual` vergleicht bei Arrays nur die nummerierten Einträge.** Eine versehentlich angelegte
+  Eigenschaft `"-1"` übersieht es; `expect(Object.keys(liste)).toEqual(['0'])` sieht sie.
+- **Testwerte, die nirgends sonst vorkommen**, wo der Code einen Rückgabewert weiterreichen soll:
+  Gibt der Mock das neue Projekt mit ID 99 zurück, fällt eine Weiterleitung auf eine andere ID auf.
+- **Eine Gegenprobe kann an einer zweiten Absicherung abprallen.** Wird der Test trotz Sabotage
+  nicht rot, erst prüfen, ob eine andere Stelle denselben Fehler abfängt (etwa ein `v-else-if` im
+  Template), bevor man dem Test misstraut — und die Sabotage dann an *allen* schützenden Stellen
+  ansetzen. Bleibt er auch dann grün, misst er nicht, was sein Name sagt.
+- **Mock-Funktionen für Store-Actions mit Signatur typisieren**, etwa
+  `vi.fn<(projectId: number) => Promise<void>>()`. Ohne Typparameter meldet es der Lint-Durchlauf,
+  und `mockResolvedValue` prüft dann den Rückgabetyp mit.
 
 ---
 
@@ -658,4 +755,4 @@ Zugehörigkeit: Layout, Navigation, `App.vue`, geteilte Formularbausteine.
 
 ---
 
-*handout-manager · Naming Conventions · v1.2*
+*handout-manager · Naming Conventions · v1.3*
