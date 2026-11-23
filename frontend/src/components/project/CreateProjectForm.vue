@@ -38,7 +38,7 @@ async function handleSubmit() {
 
     <ProjectNickNameField id="create-project-nickname" v-model="nickName" />
 
-    <p v-if="errorMessage" class="text-sm text-red-400">
+    <p v-if="errorMessage" role="alert" class="text-sm text-red-400">
       {{ errorMessage }}
     </p>
 
