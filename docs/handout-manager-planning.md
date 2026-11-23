@@ -1,13 +1,19 @@
 # handout-manager — Projektplanung
 
-**Stand: MVP-Schritt 2 (Projekte) im Backend fertig (`feature/project-backend`). MVP-Schritt 1 (Auth) vollständig — inklusive Benutzerverwaltung und Passwort-Reset, Backend und Frontend durchgestochen. CI läuft. Lernprojekt (Fullstack).**
+**Stand: MVP-Schritt 2 (Projekte) ist im Frontend fertig (`feature/project-frontend`); das Backend war mit `feature/project-backend` schon gemergt. MVP-Schritt 1 (Auth) vollständig — inklusive Benutzerverwaltung und Passwort-Reset, Backend und Frontend durchgestochen. CI läuft. Lernprojekt (Fullstack).**
+
+**MVP-Schritt 2, Frontend:** Projektübersicht mit Karten, Anlegen in einem nativen `<dialog>`,
+Detailseite mit Name und Rolle, aufklappbare Einstellungen (Umbenennen, Löschen mit Eintippen des
+Projektnamens) nur für den Spielleiter. Ein `projectStore` übernimmt die Antworten des Backends;
+alle Stores werden zentral in `clearSession` geleert. 16 neue Vitest-Tests. Die Startseite bleibt
+vorerst unverändert. Details in Abschnitt 8, „Projekte im Frontend“.
 
 **MVP-Schritt 2, Backend:** Projekt anlegen (Ersteller wird automatisch `GAME_MASTER`), eigene
 Projekte auflisten, einzelnes Projekt abrufen, umbenennen, löschen. Zugriff über die eigene
 `Membership`: fremd oder unbekannt ergibt 404, Mitglied ohne Spielleiter-Rolle 403. Das
 Kontolöschen löscht vorher die Projekte, in denen der Benutzer Spielleiter ist. Flyway V9 ergänzt
 `ON DELETE CASCADE` an fünf Fremdschlüsseln. 38 neue Unit- und Web-Layer-Tests. Integrationstests
-folgen in einem eigenen Branch nach dem Frontend. Details in Abschnitt 8, „Projekte“.
+folgen in einem eigenen Branch. Details in Abschnitt 8, „Projekte“.
 
 Umgesetzt: Spring-Boot-Projekt, PostgreSQL via docker-compose, Flyway V1–V9, alle Entities und
 Repositories, JPA-Auditing. Auth-Strecke vollständig: Registrierung, Login, Refresh mit
@@ -17,16 +23,17 @@ Cookie- und CORS-Konfiguration. Benutzerverwaltung: Profil lesen, Benutzername u
 Mailtrap, mit einmalig verwendbarem Token; der Versand läuft nach dem Commit in einem eigenen
 Thread-Pool. Im Backend 80 Tests auf Unit-, Web- und Kontext-Ebene, dazu 8 Integrationstests
 gegen eine echte PostgreSQL-Instanz über Testcontainers.
-Frontend: Vue 3 + TypeScript + Tailwind, Pinia-Stores für Auth und User, Login- und
+Frontend: Vue 3 + TypeScript + Tailwind, Pinia-Stores für Auth, User und Projekte, Login- und
 Registrierungsformular, Einstellungsseite mit drei Abschnitten, „Passwort vergessen" und
 Einlöse-Seite, Router mit Guard in beide Richtungen, Request- und Response-Interceptor mit
-Refresh und Wiederholung, geteilte Feldkomponenten für Benutzername, E-Mail und Passwort,
-22 Vitest-Tests auf Unit- und Komponenten-Ebene.
+Refresh und Wiederholung, geteilte Feldkomponenten für Benutzername, E-Mail, Passwort,
+Projektname und Nickname, Projektübersicht, -anlage und -detailseite mit Einstellungen,
+38 Vitest-Tests auf Unit- und Komponenten-Ebene.
 Im Browser nachgewiesen: CORS, HttpOnly-Cookie, SameSite, Rotation ohne Diebstahlwarnung,
 Passwortwechsel mit anschließend gültigem Refresh, vollständige Reset-Strecke über Mailtrap.
 GitHub Actions baut und testet Backend und Frontend bei jedem Pull Request.
-Als Nächstes: MVP-Schritt 2 im Frontend (`feature/project-frontend`), danach ein eigener Branch
-für die Integrationstests.
+Als Nächstes: Spielsystem und Beschreibung am Projekt, danach der Branch für die
+Integrationstests, dann MVP-Schritt 3 (inklusive Anpinnen und Startseite).
 
 Diese Datei bündelt den gesamten Planungsstand als Kontext für spätere Arbeitssitzungen. Ergänzend: `naming-conventions.md` (Namenskonventionen).
 
@@ -276,10 +283,12 @@ Kern-Durchstich: SL legt Projekt an → lädt Spieler ein → erstellt/lädt Res
 1. **Registrierung + Login** (Auth, JWT) — *abgeschlossen, Backend und Frontend*,
    inklusive Benutzerverwaltung (Profil, Benutzername, Passwort, Kontolöschung) und
    Passwort-Reset per E-Mail
-2. **Projekt anlegen** — *Backend abgeschlossen*, erweitert auf anlegen, auflisten, einzeln
-   abrufen, umbenennen und löschen; Frontend offen
-3. **Spieler einladen / zu Projekt hinzufügen** — dazu kommt hier „Nickname ändern“
-   (Spielleiter alle, jeder seinen eigenen), das aus Schritt 2 hierher vertagt wurde
+2. **Projekt anlegen** — *abgeschlossen, Backend und Frontend*, erweitert auf anlegen,
+   auflisten, einzeln abrufen, umbenennen und löschen. Danach noch Spielsystem und Beschreibung
+   am Projekt als eigener kleiner Branch.
+3. **Spieler einladen / zu Projekt hinzufügen** — dazu kommen hier „Nickname ändern“
+   (Spielleiter alle, jeder seinen eigenen) sowie **Anpinnen** von Projekten an der Membership und
+   die Entscheidung, was die **Startseite** zeigt; alle drei aus Schritt 2 hierher vertagt
 4. **Resource erstellen (Text) und hochladen (Datei)**
 5. **Resource pro Spieler freigeben** (Permission)
 6. **Spieler-Sicht:** nur freigegebene Resources anzeigen
@@ -367,14 +376,18 @@ frontend/src/
 ├── components/
 │   ├── auth/          (LoginForm, RegisterForm, ForgotPasswordForm, ResetPasswordForm)
 │   ├── layout/        (AppNavbar)
+│   ├── project/       (ProjectCard, CreateProjectForm, ProjectSettings,
+│   │                   RenameProjectSection, DeleteProjectSection, __tests__/)
 │   ├── settings/      (UserNameSection, PasswordSection, DeleteAccountSection)
 │   └── ui/            (FormField als Rumpf, UserNameField, EmailField,
-│                       PasswordField, __tests__/)
-├── views/             (AuthView als Rahmen, HomeView, SettingsView)
+│                       PasswordField, ProjectNameField, ProjectNickNameField, __tests__/)
+├── views/             (AuthView als Rahmen, HomeView, SettingsView, ProjectsView,
+│                       ProjectView)
 ├── router/            (Routen + Guard, RouteMeta-Augmentation)
-├── stores/            (authStore.ts, userStore.ts, __tests__/)
+├── stores/            (authStore.ts, userStore.ts, projectStore.ts, __tests__/)
 ├── composables/
-├── types/
+├── types/             (auth.ts, user.ts, project.ts, membership.ts)
+├── utils/             (formatMembershipRole.ts)
 ├── themes/            (Fantasy/Horror via CSS-Variablen-Tokens)
 ├── App.vue            (Navbar + RouterView)
 └── main.ts            (bootstrap(): Pinia → Interceptors → restoreSession → loadUser →
@@ -1249,6 +1262,137 @@ mit `GAME_MASTER` wäre dagegen grün geblieben. Ebenso trägt die Exception im 
 einen anderen Text als der erwartete Titel — sonst bliebe der Test grün, wenn der Handler
 später `e.getMessage()` als Titel übernähme.
 
+### Projekte im Frontend (`feature/project-frontend`, MVP-Schritt 2)
+
+**Seiten und Routen:**
+
+| Pfad | Name | View | Inhalt |
+|---|---|---|---|
+| `/projects` | `projects` | `ProjectsView` | alle Projekte als `ProjectCard`, Button „New project“ öffnet den Dialog |
+| `/projects/:projectId` | `project` | `ProjectView` | Name und eigene Rolle, Zahnrad klappt die Einstellungen auf (nur Spielleiter) |
+
+Beide Routen tragen `requiresAuth`. Die Navbar hat einen Eintrag „Projects“; ihre jetzige Form
+ist ein Entwicklungsstand.
+
+#### Zustand: `projectStore`
+
+- **`projects` für die Liste, `currentProject` für die Detailseite.** Die Liste startet als `[]`,
+  nicht `null`: „keine Projekte“ ist eine leere Liste, und jede Ansicht läuft ohne `null`-Prüfung
+  darüber.
+- **Eine Action pro Endpunkt, und jede übernimmt die Antwort** statt nachzuladen: Anlegen fügt
+  hinzu, Umbenennen ersetzt, Löschen entfernt. Jede Ansicht ist danach ohne weiteren Request
+  aktuell. Der Store ändert sich erst **nach** dem `await` — schlägt der Request fehl, bleibt er
+  unverändert.
+- **`createProject` gibt `response.data` zurück**, nicht `currentProject.value`. Beides ist
+  dasselbe Objekt, aber `currentProject` hat den Typ `ProjectResponse | null`, und der Aufrufer
+  bräuchte für die Weiterleitung eine `null`-Prüfung, die nie greifen kann.
+- **Einträge werden über ihre `id` gefunden, nie über ihre Position.** Die erste Fassung schrieb
+  `projects.value[projectId] = …` und `splice(projectId, 1)` — bei IDs 7 und 12 landet ein
+  umbenanntes Projekt an Position 12, und gelöscht wird ein anderes. Heute: `findIndex` mit
+  Prüfung auf `-1` beim Umbenennen, `filter` beim Löschen. Die Prüfung ist nötig, weil das Projekt
+  fehlen kann (Detailseite direkt über die URL geöffnet, Liste nie geladen): `projects.value[-1]`
+  legt still eine Eigenschaft `"-1"` an, und `splice(-1, 1)` entfernt das **letzte** Element.
+- **Die Liste lädt die Ansicht, die sie braucht**, beim Öffnen — nicht `bootstrap()`. Drei
+  Gründe: `bootstrap()` läuft nur beim Neuladen, nicht nach dem Login; jeder Request dort
+  verlängert den weißen Bildschirm beim Start; und ab Schritt 3 sieht man neue Einladungen ohne
+  Neuladen. Beim Profil war `bootstrap()` richtig, weil die Navbar es auf jeder Seite braucht.
+- **Alle Stores werden zentral in `clearSession` geleert.** Vorher leerte nur `logout` das Profil;
+  `restoreSession` im Fehlerfall und der Interceptor nach einem gescheiterten Refresh riefen nur
+  `clearSession` und ließen Profil und — jetzt — Projekte des vorigen Benutzers stehen. Seit dem
+  Umbau laufen Logout, Kontolöschen und Refresh-Fehlschlag über eine Stelle, und ein künftiger
+  Store wird an genau einer Stelle ergänzt. Die Stores werden innerhalb der Funktion geholt, nicht
+  auf Modulebene (Importzirkel).
+
+#### Anlegen
+
+- **Ein natives `<dialog>` mit `showModal()`**, kein eigenes Overlay mit `z-index`. Der Browser
+  legt es in den „Top Layer“, sperrt den Hintergrund, setzt den Fokus hinein, schließt bei Escape
+  und gibt den Fokus danach an den Button zurück — alles, was ein selbstgebauter Dialog von Hand
+  nachbauen müsste und dessen Fehlen per Tastatur oder Screenreader still kaputt wäre. Die erste
+  Fassung war ein aufklappendes Formular in der Seite; der Wechsel kam aus der Gestaltung.
+- **Das Formular steht mit `v-if` im Dialog**, gesteuert über `isCreateFormOpen`, das beim `close`-
+  Event auf `false` geht. Das `<dialog>` selbst verlässt das DOM nie; ohne `v-if` stünden beim
+  nächsten Öffnen die alten Eingaben und Fehler noch drin. Das `close`-Event feuert auch bei Escape.
+- **`aria-labelledby`** am Dialog zeigt auf die Überschrift im Formular, **`aria-haspopup="dialog"`**
+  am Button. Abbrechen meldet das Formular per `emit('cancel')`; den Dialog schließt die View.
+- **Nach dem Anlegen geht es direkt auf die Detailseite** des neuen Projekts, mit der `id` aus der
+  Antwort. Navigation gehört in die Komponente, nicht in den Store.
+- **`ProjectNameField` und `ProjectNickNameField`** als fachliche Felder über `FormField`. Beide mit
+  `autocomplete="off"`: `name` hieße „vollständiger Name einer Person“, `nickname` „dein eigener
+  Spitzname“ — der Browser schlüge sonst den Namen des Benutzers als Projektnamen vor. Der Nickname
+  ist nicht `required`, weil leer im Backend zu `null` wird.
+
+#### Detailseite
+
+- **Router-Parameter sind Strings.** `Number(route.params.projectId)` wandelt um, und
+  `Number.isInteger(…) && > 0` erkennt `/projects/abc` (ergibt `NaN`). Eine ungültige ID wird **ohne
+  Request** wie eine 404 behandelt — für den Benutzer sind „falsche URL“, „gibt es nicht“ und „gehört
+  einem anderen“ dasselbe: „Project not found.“ mit Link zurück zur Übersicht.
+- **Template-Reihenfolge: laden, Fehler, Projekt.** Im Store kann von vorher noch ein anderes Projekt
+  in `currentProject` stehen; schlägt das Laden fehl, bleibt es dort. Weil der Fehler vor dem Projekt
+  geprüft wird, ist ein veraltetes Projekt nie zu sehen. `v-else-if="projectStore.currentProject"`
+  statt `v-else`, damit TypeScript darunter weiß, dass es nicht `null` ist.
+- **Die Rolle als lesbarer Text** über `formatMembershipRole` in `utils/`, mit einem
+  `Record<MembershipRole, string>` — kommt eine Rolle dazu, meldet TypeScript die fehlende
+  Beschriftung. Herausgezogen, als die Übersetzung an der zweiten Stelle gebraucht wurde.
+
+#### Einstellungen
+
+- **Eine Hülle `ProjectSettings`** mit `RenameProjectSection` und `DeleteProjectSection` darin — nach
+  der Regel „ein Formular, eine Komponente“, und weil die `ProjectView` mit Mitgliedern und Resources
+  noch wächst: Sie hängt nur eine Komponente mit einem `v-if` für den Spielleiter ein. Eine eigene
+  Route `/projects/:projectId/settings` wurde verworfen.
+- **Aufgeklappt über einen Zahnrad-Button** (eigenes SVG). Ein reiner Symbol-Button braucht
+  `aria-label`, das SVG `aria-hidden="true"`; dazu `aria-expanded` und `aria-controls` auf die
+  `id` der Hülle. Hier ist `aria-expanded` richtig, anders als beim Dialog-Button.
+- **Ausblenden für Spieler ist Bequemlichkeit, keine Sicherheit** — die Sperre ist das 403 im
+  Backend.
+- **Umbenennen** befüllt das Feld mit `ref(props.project.name)` vor — eine einmalige Kopie, keine
+  Verknüpfung, sonst überschriebe der Store die Eingabe beim Tippen. Die Überschrift der Seite
+  aktualisiert sich von selbst, weil `renameProject` `currentProject` neu setzt.
+- **Löschen nur nach Eintippen des Projektnamens** (wie GitHub beim Repository), exakter Vergleich
+  inklusive Groß- und Kleinschreibung. Erwogen und verworfen: eine bloße Rückfrage (wird
+  irgendwann blind weggeklickt) und ein Passwort (Backend-Umbau, Löschen wäre die einzige
+  Projekt-Aktion mit Passwort, und derselbe Endpunkt hätte zwei verschiedene 403-Gründe). Das
+  Risiko ist hier das Versehen, nicht der Angreifer. Danach geht es zur Startseite.
+- **Meldungen mit `role="alert"` (Fehler) und `role="status"` (Bestätigung)**, damit ein
+  Screenreader sie ansagt, obwohl der Fokus sich nicht bewegt. Einschränkung: Ein `status`, der per
+  `v-if` erst eingefügt wird, sagen manche Screenreader nicht zuverlässig an.
+- **Überschriften-Ebenen über Komponentengrenzen:** `<h1>` ist der Projektname, `<h2>` „Settings“
+  in der Hülle, `<h3>` in den Abschnitten.
+- **Doppelte `id` durch durchfallende Attribute** — gefunden beim Review: `id="project-settings"`
+  stand an der Komponente in der View *und* an der `<section>` in der Hülle; ein Attribut an einer
+  Komponente fällt auf ihr äußerstes Element durch, also gab es die `id` zweimal. Ebenso trug die
+  Hülle zuerst die Layout-Klassen einer Seite (`min-h-[calc(100vh-3.5rem)]`), obwohl sie in einer
+  Seite steckt.
+
+#### Was die Tests absichern
+
+16 neue Tests, Stand 38 im Frontend. Gemockt wird bei den Komponenten das Store-Modul und
+`vue-router`, beim Store `httpClient`; `extractErrorMessage` bleibt echt.
+
+- **`projectStore.spec.ts`** (6): Name und Nickname in dieser Reihenfolge; Umbenennen ersetzt über
+  die `id` (IDs 7 und 12, absichtlich ungleich ihren Positionen); Umbenennen eines Projekts, das
+  nicht in der Liste steht, lässt die Liste unverändert — geprüft auch mit `Object.keys`, weil
+  `toEqual` eine Eigenschaft `"-1"` am Array übersehen würde; Löschen entfernt nur das richtige;
+  ein fehlgeschlagenes Löschen ändert nichts; `clearProjects` leert beide Felder.
+- **`DeleteProjectSection.spec.ts`** (3): Button bleibt bei abweichender Großschreibung gesperrt;
+  Erfolg löscht dieses Projekt und navigiert zur Startseite; Fehlschlag navigiert **nicht**.
+- **`CreateProjectForm.spec.ts`** (4): Argumentreihenfolge; Weiterleitung auf die **zurückgegebene**
+  ID (99, kommt sonst nirgends vor); Fehlschlag ohne Navigation; Abbrechen meldet `cancel` und ist
+  ein `type="button"`.
+- **`RenameProjectSection.spec.ts`** (3): Vorbefüllung und Argumente; Bestätigung nach Erfolg;
+  Fehler **ohne** Bestätigung.
+
+**Zwei Gegenproben, die zuerst nichts gefunden haben** — beide Male lag es am Test bzw. an der
+Anleitung, nicht am Code:
+
+- **Abbrechen ohne `type="button"` blieb grün.** jsdom löst beim Klick auf einen Button kein
+  `submit` aus. Der Test prüft jetzt die Ursache direkt: `attributes('type')` ist `'button'`.
+- **Erfolgsmeldung trotz Fehler blieb grün.** Die Sabotage (`isSaved` vor dem Request auf `true`)
+  wurde vom `v-else-if` im Template abgefangen — die Absicherung sitzt doppelt. Erst mit `v-if`
+  statt `v-else-if` zusätzlich wurde der Test rot.
+
 ---
 
 ## 9. Offene Punkte / nächste Schritte
@@ -1294,13 +1438,19 @@ Branch die Änderung nicht.
 ### Nächste Branches
 
 *Erledigt: `refactor/async-mail`, `refactor/form-fields`, `chore/integration-tests`,
-`chore/validation-tests` und `feature/project-backend` — Entscheidungen und Nachweise in
-Abschnitt 8.*
+`chore/validation-tests`, `feature/project-backend` und `feature/project-frontend` —
+Entscheidungen und Nachweise in Abschnitt 8.*
 
-1. **`feature/project-frontend`** — Übersicht, Anlegen, Einzelansicht, Umbenennen, Löschen.
-   Anzeigename ohne Nickname: Benutzername.
+1. **Spielsystem und Beschreibung am Projekt** — zwei neue Felder an `project`, gelten für alle
+   Mitglieder gleich (anders als „angepinnt“, das pro Benutzer an der Membership hängt). Backend und
+   Frontend in einem kleinen Branch. Bewusst **vor** den Integrationstests: Die Felder ändern genau
+   die Endpunkte, die diese prüfen sollen. *Preis:* Der Nachweis, dass V9 beim Kontolöschen
+   wirklich kaskadiert, wartet einen Branch länger — deshalb die Integrationstests direkt danach.
 2. **`chore/project-integration-tests`** — Integrationstests für MVP-Schritt 2 (Liste unten).
-3. **MVP-Schritt 3: Spieler einladen.**
+3. **MVP-Schritt 3: Spieler einladen**, dazu Nickname ändern, **Anpinnen** und die Startseite.
+   Anpinnen kam von Schritt 2 hierher: Es ist im Kern ein Feature für die Startseite, lohnt erst bei
+   vielen Projekten (die kommen durch Einladungen) und ist wie Nickname und Einladen eine Änderung
+   an der Membership.
 
 ### Integrationstests für MVP-Schritt 2 (geplant)
 
@@ -1338,9 +1488,28 @@ Was nur eine echte Datenbank und zwei echte Benutzer zeigen können:
   Abbildung steht im Controller dreimal; bei drei Feldern vertretbar, aber eine Stelle wäre
   besser.
 
+### Offene Punkte aus MVP-Schritt 2 im Frontend
+
+- **Was die Startseite zeigt** — offen, wird mit Schritt 3 entschieden. Verworfen: „zuletzt
+  benutzt“ im Local Storage (nur pro Browser) oder an der Membership (`GET` mit Nebenwirkung);
+  „die drei neuesten“ nach `id` als Platzhalter wurde nicht gebaut, weil das Anpinnen es ersetzt.
+- **Anpinnen** an der Membership (Spalte, Migration, Endpunkt) — mit Schritt 3, siehe oben.
+- **`watch` auf `projectId` in der `ProjectView`**, sobald es Links von einem Projekt zum anderen
+  gibt: Vue verwendet die Komponente dann weiter, `onMounted` läuft nicht erneut.
+- **Markierung in der Navbar auf der Detailseite fehlt** — `active-class` greift nur für dieselbe
+  oder eine Kind-Route, `/projects/:projectId` ist keine Kind-Route von `/projects`. Die Navbar ist
+  ohnehin ein Entwicklungsstand.
+- **`role="status"` zuverlässig ansagen:** ein leeres Element, das immer im DOM steht und nur
+  seinen Text wechselt, statt es per `v-if` einzufügen.
+- **Bestehende Einstellungs-Abschnitte** (`UserNameSection`, `PasswordSection`,
+  `DeleteAccountSection`) prüfen, ob sie `role="alert"` und `role="status"` schon haben — nur
+  vermutet, nicht nachgesehen.
+- **Icon-Bibliothek** (etwa `lucide-vue-next`) statt des eigenen Zahnrad-SVGs, falls weitere Symbole
+  dazukommen.
+
 ### Testabdeckung
 
-148 Tests — 118 Unit-, Web- und Kontext-Tests im Backend, 8 Integrationstests, 22 im Frontend.
+164 Tests — 118 Unit-, Web- und Kontext-Tests im Backend, 8 Integrationstests, 38 im Frontend.
 Alle Sicherheitsentscheidungen sind maschinell abgesichert:
 
 | Klasse | Tests | Ebene | Kernaussagen |
@@ -1367,6 +1536,10 @@ Alle Sicherheitsentscheidungen sind maschinell abgesichert:
 | `PasswordSection.spec.ts` | 3 | Komponente (FE) | Argumentreihenfolge an den Store, beide Felder werden geleert, nach einem Fehlschlag erscheint die Erfolgsmeldung *nicht* |
 | `UserNameSection.spec.ts` | 3 | Komponente (FE) | Argumentreihenfolge, Passwortfeld wird geleert, Fehler statt Bestätigung bei Ablehnung |
 | `DeleteAccountSection.spec.ts` | 3 | Komponente (FE) | Weiterleitung mit `deleted=1` nach Erfolg — und **keine** Weiterleitung bei Fehlschlag |
+| `projectStore.spec.ts` | 6 | Unit (FE) | Argumentreihenfolge beim Anlegen, Ersetzen und Löschen über die `id` statt die Position, Projekt außerhalb der Liste ändert sie nicht, Fehlschlag ändert nichts, `clearProjects` leert beides |
+| `DeleteProjectSection.spec.ts` | 3 | Komponente (FE) | Button bleibt bei abweichender Großschreibung gesperrt, nach Erfolg zur Startseite, bei Fehlschlag **keine** Navigation |
+| `CreateProjectForm.spec.ts` | 4 | Komponente (FE) | Argumentreihenfolge, Weiterleitung auf die zurückgegebene ID, Fehlschlag ohne Navigation, Abbrechen ist `type="button"` |
+| `RenameProjectSection.spec.ts` | 3 | Komponente (FE) | Feld mit aktuellem Namen vorbefüllt, ID und neuer Name an den Store, Fehler ohne Bestätigung |
 
 **Werkzeuge Backend:** Mockito nur dort, wo eine Abhängigkeit Verhalten hat — reine Datenhalter
 mit `new`, was bedeutet, dass der Prüfling von Hand konstruiert wird. `ArgumentCaptor`, um zu
@@ -1390,6 +1563,12 @@ Grün eine Aussage.
 Durchstich, der Nachweis für `AFTER_COMMIT` und `@Async`, die `JwtProperties`-Validierung.
 Geschlossen in `chore/validation-tests`: Login- und Registrierungs-Validierung, die
 Einstellungs-Komponenten.*
+
+- **`ProjectView`** — dass `/projects/abc` „Project not found.“ zeigt, **ohne** `loadProject`
+  aufzurufen (der anfängliche `.value`-Fehler bei `isValidProjectId`). Vertagt, weil sich die
+  Struktur der Seite mit Mitgliedern und Resources noch ändert.
+- **`ProjectCard`, `ProjectSettings`, `ProjectNameField`, `ProjectNickNameField`** sind bewusst
+  ungetestet — keine Verzweigung, ein Test würde nur Markup festnageln.
 
 - **Der Fall „kein `@Transactional` am Service"** — dann dürfte gar keine Mail rausgehen, weil
   ein `@TransactionalEventListener` ohne Transaktion stumm nichts tut. Mit dem Mail-Mock in der
@@ -1460,4 +1639,4 @@ Einstellungs-Komponenten.*
 
 ---
 
-*handout-manager · Projektplanung · MVP-Schritt 1 (Auth) abgeschlossen · MVP-Schritt 2 (Projekte) im Backend abgeschlossen*
+*handout-manager · Projektplanung · MVP-Schritt 1 (Auth) abgeschlossen · MVP-Schritt 2 (Projekte) abgeschlossen, Backend und Frontend*

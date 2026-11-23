@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import client from '@/api/httpClient'
 import { useUserStore } from '@/stores/userStore'
+import { useProjectStore } from '@/stores/projectStore'
 import type { TokenResponse } from '@/types/auth'
 
 export const useAuthStore = defineStore('auth', () => {
@@ -23,13 +24,10 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   async function logout() {
-    const userStore = useUserStore()
-
     try {
       await client.post('/api/auth/logout')
     } finally {
       clearSession()
-      userStore.clearUser()
     }
   }
 
@@ -47,6 +45,10 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   function clearSession() {
+    const userStore = useUserStore()
+    const projectStore = useProjectStore()
+    userStore.clearUser()
+    projectStore.clearProjects()
     accessToken.value = null
   }
 

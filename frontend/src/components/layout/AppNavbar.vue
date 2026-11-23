@@ -13,6 +13,7 @@ const navItems = [
   { name: 'settings', label: 'Settings', auth: true },
   { name: 'login', label: 'Login', auth: false },
   { name: 'register', label: 'Register', auth: false },
+  { name: 'projects', label: 'Projects', auth: true },
 ]
 
 // auth === isAuthenticated covers both directions: protected pages for
