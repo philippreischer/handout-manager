@@ -328,7 +328,7 @@
             "header": [],
             "body": {
               "mode": "raw",
-              "raw": "{\r\n  \"name\": \"Spiel1\",\r\n  \"nickName\": \"Spielleiter\"\r\n}",
+              "raw": "{\r\n  \"name\": \"Curse of Strahd\",\r\n  \"gameSystem\": \"Dungeons & Dragons 5e\",\r\n  \"description\": \"The barony of Barovia lies under an endless mist. A dark lord rules from his castle, and no traveller has left the valley in living memory.\",\r\n  \"nickName\": \"Strahd von Zarovich\"\r\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -403,7 +403,7 @@
             "header": [],
             "body": {
               "mode": "raw",
-              "raw": "{\r\n    \"name\": \"new name\"\r\n}",
+              "raw": "{\r\n    \"name\": \"Tomb of Annihilation\"\r\n}",
               "options": {
                 "raw": {
                   "language": "json"
