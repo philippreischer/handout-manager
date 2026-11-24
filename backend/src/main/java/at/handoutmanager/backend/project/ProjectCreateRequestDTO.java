@@ -6,6 +6,10 @@ import jakarta.validation.constraints.Size;
 public record ProjectCreateRequestDTO(@NotBlank(message = "Project name is required")
                                       @Size(max = 255, message = "Project name must not exceed 255 characters")
                                       String name,
+                                      @Size(max = 255, message = "Game system must not exceed 255 characters")
+                                      String gameSystem,
+                                      @Size(max = 2000, message = "Description must not exceed 2000 characters")
+                                      String description,
                                       @Size(max = 255, message = "Nickname must not exceed 255 characters")
                                       String nickName) {
 }

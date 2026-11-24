@@ -1,5 +1,6 @@
 package at.handoutmanager.backend.membership;
 
+import at.handoutmanager.backend.common.StringUtil;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
@@ -16,18 +17,10 @@ public class MembershipService {
 
     public Membership createMembership(Long userId, Long projectId,
                                        String nickName, MembershipRole membershipRole){
-        String normalizedNickName = normalizeNickName(nickName);
+        String normalizedNickName = StringUtil.blankToNull(nickName);
         Membership membership = new Membership(userId, projectId, normalizedNickName, membershipRole);
 
         return membershipRepository.save(membership);
-    }
-
-
-    private String normalizeNickName(String nickName){
-        if (nickName == null || nickName.isBlank()){
-            return null;
-        }
-        return nickName;
     }
 
     public List<Membership> getMembershipsByUserId(Long userId){
