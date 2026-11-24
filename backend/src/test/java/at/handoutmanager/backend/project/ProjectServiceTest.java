@@ -30,6 +30,8 @@ class ProjectServiceTest {
     private static final String PROJECT_NAME = "Curse of Strahd";
     private static final String NEW_PROJECT_NAME = "House of Lament";
     private static final String SECOND_PROJECT_NAME = "Tomb of Annihilation";
+    private static final String GAME_SYSTEM = "Dungeons & Dragons 5e";
+    private static final String DESCRIPTION = "A barony lost in fog.";
     private static final String NICK_NAME = "Strahd von Zarovich";
 
     @Mock
@@ -48,7 +50,7 @@ class ProjectServiceTest {
 
     @BeforeEach
     void setUp() {
-        savedProject = new Project(PROJECT_NAME);
+        savedProject = new Project(PROJECT_NAME, GAME_SYSTEM, DESCRIPTION);
         ReflectionTestUtils.setField(savedProject, "id", PROJECT_ID);
     }
 
@@ -57,7 +59,7 @@ class ProjectServiceTest {
     void shouldSaveProjectWithGivenName_whenProjectIsCreated() {
         when(projectRepositoryMock.save(any(Project.class))).thenReturn(savedProject);
 
-        sut.createProject(USER_ID, PROJECT_NAME, NICK_NAME);
+        sut.createProject(USER_ID, PROJECT_NAME, GAME_SYSTEM, DESCRIPTION, NICK_NAME);
 
         verify(projectRepositoryMock).save(projectCaptor.capture());
         assertThat(projectCaptor.getValue().getName()).isEqualTo(PROJECT_NAME);
@@ -67,7 +69,7 @@ class ProjectServiceTest {
     void shouldCreateGameMasterMembership_whenProjectIsCreated() {
         when(projectRepositoryMock.save(any(Project.class))).thenReturn(savedProject);
 
-        sut.createProject(USER_ID, PROJECT_NAME, NICK_NAME);
+        sut.createProject(USER_ID, PROJECT_NAME, GAME_SYSTEM, DESCRIPTION, NICK_NAME);
 
         verify(membershipServiceMock).createMembership(USER_ID, PROJECT_ID, NICK_NAME, MembershipRole.GAME_MASTER);
     }
@@ -76,15 +78,15 @@ class ProjectServiceTest {
     void shouldReturnSummary_whenProjectIsCreated() {
         when(projectRepositoryMock.save(any(Project.class))).thenReturn(savedProject);
 
-        ProjectSummary result = sut.createProject(USER_ID, PROJECT_NAME, NICK_NAME);
+        ProjectSummary result = sut.createProject(USER_ID, PROJECT_NAME, GAME_SYSTEM, DESCRIPTION, NICK_NAME);
 
-        assertThat(result).isEqualTo(new ProjectSummary(PROJECT_ID, PROJECT_NAME, MembershipRole.GAME_MASTER));
+        assertThat(result).isEqualTo(new ProjectSummary(PROJECT_ID, PROJECT_NAME, GAME_SYSTEM, DESCRIPTION, MembershipRole.GAME_MASTER));
     }
 
     //getProjectsForUser
     @Test
     void shouldReturnSummariesWithNameFromProjectAndRoleFromMembership_whenUserHasProjects() {
-        Project secondProject = projectWithId(SECOND_PROJECT_ID, SECOND_PROJECT_NAME);
+        Project secondProject = projectWithId(SECOND_PROJECT_ID, SECOND_PROJECT_NAME, GAME_SYSTEM, DESCRIPTION);
         when(membershipServiceMock.getMembershipsByUserId(USER_ID)).thenReturn(List.of(
                 new Membership(USER_ID, PROJECT_ID, NICK_NAME, MembershipRole.GAME_MASTER),
                 new Membership(USER_ID, SECOND_PROJECT_ID, NICK_NAME, MembershipRole.PLAYER)));
@@ -94,8 +96,8 @@ class ProjectServiceTest {
         List<ProjectSummary> result = sut.getProjectsForUser(USER_ID);
 
         assertThat(result).containsExactly(
-                new ProjectSummary(PROJECT_ID, PROJECT_NAME, MembershipRole.GAME_MASTER),
-                new ProjectSummary(SECOND_PROJECT_ID, SECOND_PROJECT_NAME, MembershipRole.PLAYER));
+                new ProjectSummary(PROJECT_ID, PROJECT_NAME, GAME_SYSTEM, DESCRIPTION, MembershipRole.GAME_MASTER),
+                new ProjectSummary(SECOND_PROJECT_ID, SECOND_PROJECT_NAME, GAME_SYSTEM, DESCRIPTION, MembershipRole.PLAYER));
     }
 
     @Test
@@ -107,7 +109,7 @@ class ProjectServiceTest {
 
     @Test
     void shouldLoadAllProjectsInOneQuery_whenUserHasSeveralProjects() {
-        Project secondProject = projectWithId(SECOND_PROJECT_ID, SECOND_PROJECT_NAME);
+        Project secondProject = projectWithId(SECOND_PROJECT_ID, SECOND_PROJECT_NAME, GAME_SYSTEM, DESCRIPTION);
         when(membershipServiceMock.getMembershipsByUserId(USER_ID)).thenReturn(List.of(
                 new Membership(USER_ID, PROJECT_ID, NICK_NAME, MembershipRole.GAME_MASTER),
                 new Membership(USER_ID, SECOND_PROJECT_ID, NICK_NAME, MembershipRole.GAME_MASTER)));
@@ -129,7 +131,7 @@ class ProjectServiceTest {
 
         ProjectSummary result = sut.getProject(USER_ID, PROJECT_ID);
 
-        assertThat(result).isEqualTo(new ProjectSummary(PROJECT_ID, PROJECT_NAME, MembershipRole.PLAYER));
+        assertThat(result).isEqualTo(new ProjectSummary(PROJECT_ID, PROJECT_NAME, GAME_SYSTEM, DESCRIPTION, MembershipRole.PLAYER));
     }
 
     @Test
@@ -162,7 +164,7 @@ class ProjectServiceTest {
 
         ProjectSummary result = sut.renameProject(USER_ID, PROJECT_ID, NEW_PROJECT_NAME);
 
-        assertThat(result).isEqualTo(new ProjectSummary(PROJECT_ID, NEW_PROJECT_NAME, MembershipRole.GAME_MASTER));
+        assertThat(result).isEqualTo(new ProjectSummary(PROJECT_ID, NEW_PROJECT_NAME, GAME_SYSTEM, DESCRIPTION, MembershipRole.GAME_MASTER));
         verify(projectRepositoryMock).save(projectCaptor.capture());
         assertThat(projectCaptor.getValue().getName()).isEqualTo(NEW_PROJECT_NAME);
     }
@@ -233,8 +235,8 @@ class ProjectServiceTest {
         verify(projectRepositoryMock).deleteAllByIdInBatch(List.of(PROJECT_ID));
     }
 
-    private Project projectWithId(Long id, String name) {
-        Project project = new Project(name);
+    private Project projectWithId(Long id, String name, String gameSystem, String description) {
+        Project project = new Project(name, gameSystem, description);
         ReflectionTestUtils.setField(project, "id", id);
         return project;
     }
