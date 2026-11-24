@@ -31,7 +31,9 @@ class ProjectServiceTest {
     private static final String NEW_PROJECT_NAME = "House of Lament";
     private static final String SECOND_PROJECT_NAME = "Tomb of Annihilation";
     private static final String GAME_SYSTEM = "Dungeons & Dragons 5e";
+    private static final String BLANK_GAME_SYSTEM = "   ";
     private static final String DESCRIPTION = "A barony lost in fog.";
+    private static final String BLANK_DESCRIPTION = "   ";
     private static final String NICK_NAME = "Strahd von Zarovich";
 
     @Mock
@@ -63,6 +65,28 @@ class ProjectServiceTest {
 
         verify(projectRepositoryMock).save(projectCaptor.capture());
         assertThat(projectCaptor.getValue().getName()).isEqualTo(PROJECT_NAME);
+    }
+
+    @Test
+    void shouldSaveGameSystemAndDescription_whenProjectIsCreated() {
+        when(projectRepositoryMock.save(any(Project.class))).thenReturn(savedProject);
+
+        sut.createProject(USER_ID, PROJECT_NAME, GAME_SYSTEM, DESCRIPTION, NICK_NAME);
+
+        verify(projectRepositoryMock).save(projectCaptor.capture());
+        assertThat(projectCaptor.getValue().getGameSystem()).isEqualTo(GAME_SYSTEM);
+        assertThat(projectCaptor.getValue().getDescription()).isEqualTo(DESCRIPTION);
+    }
+
+    @Test
+    void shouldStoreNullGameSystemAndDescription_whenTheyAreBlank() {
+        when(projectRepositoryMock.save(any(Project.class))).thenReturn(savedProject);
+
+        sut.createProject(USER_ID, PROJECT_NAME, BLANK_GAME_SYSTEM, BLANK_DESCRIPTION, NICK_NAME);
+
+        verify(projectRepositoryMock).save(projectCaptor.capture());
+        assertThat(projectCaptor.getValue().getGameSystem()).isNull();
+        assertThat(projectCaptor.getValue().getDescription()).isNull();
     }
 
     @Test
