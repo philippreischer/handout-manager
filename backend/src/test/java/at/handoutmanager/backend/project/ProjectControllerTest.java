@@ -40,7 +40,9 @@ class ProjectControllerTest {
     private static final String NEW_PROJECT_NAME = "House of Lament";
     private static final String SECOND_PROJECT_NAME = "Tomb of Annihilation";
     private static final String GAME_SYSTEM = "Dungeons & Dragons 5e";
+    private static final String NEW_GAME_SYSTEM = "Call of Cthulhu 7e";
     private static final String DESCRIPTION = "A barony lost in fog.";
+    private static final String NEW_DESCRIPTION = "Arkham, 1923. A professor has gone missing.";
     private static final String NICK_NAME = "Strahd von Zarovich";
 
     private static final String VALID_REQUEST = """
@@ -55,6 +57,12 @@ class ProjectControllerTest {
             """;
     private static final String BLANK_NAME_RENAME_REQUEST = """
             {"name": ""}
+            """;
+    private static final String VALID_GAME_SYSTEM_REQUEST = """
+            {"gameSystem": "Call of Cthulhu 7e"}
+            """;
+    private static final String VALID_DESCRIPTION_REQUEST = """
+            {"description": "Arkham, 1923. A professor has gone missing."}
             """;
 
     @Autowired
@@ -241,6 +249,108 @@ class ProjectControllerTest {
         mockMvc.perform(patch("/api/projects/{projectId}/name", PROJECT_ID)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(VALID_RENAME_REQUEST))
+                .andExpect(status().isUnauthorized());
+
+        verifyNoInteractions(projectServiceMock);
+    }
+
+    //updateGameSystem
+    @Test
+    void shouldReturnUpdatedGameSystem_whenRequestIsValid() throws Exception {
+        when(projectServiceMock.updateGameSystem(USER_ID, PROJECT_ID, NEW_GAME_SYSTEM))
+                .thenReturn(new ProjectSummary(PROJECT_ID, PROJECT_NAME, NEW_GAME_SYSTEM, DESCRIPTION, MembershipRole.GAME_MASTER));
+
+        mockMvc.perform(patch("/api/projects/{projectId}/game-system", PROJECT_ID)
+                        .with(authentication(new UsernamePasswordAuthenticationToken(USER_ID, null, List.of())))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(VALID_GAME_SYSTEM_REQUEST))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(PROJECT_ID))
+                .andExpect(jsonPath("$.gameSystem").value(NEW_GAME_SYSTEM));
+    }
+
+    @Test
+    void shouldReturnNotFound_whenServiceThrowsProjectNotFoundOnGameSystemUpdate() throws Exception {
+        when(projectServiceMock.updateGameSystem(USER_ID, PROJECT_ID, NEW_GAME_SYSTEM))
+                .thenThrow(new ProjectNotFoundException("No membership found"));
+
+        mockMvc.perform(patch("/api/projects/{projectId}/game-system", PROJECT_ID)
+                        .with(authentication(new UsernamePasswordAuthenticationToken(USER_ID, null, List.of())))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(VALID_GAME_SYSTEM_REQUEST))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.title").value("Project not found"));
+    }
+
+    @Test
+    void shouldReturnForbidden_whenServiceThrowsAccessDeniedOnGameSystemUpdate() throws Exception {
+        when(projectServiceMock.updateGameSystem(USER_ID, PROJECT_ID, NEW_GAME_SYSTEM))
+                .thenThrow(new ProjectAccessDeniedException("userId: 1, projectId: 2"));
+
+        mockMvc.perform(patch("/api/projects/{projectId}/game-system", PROJECT_ID)
+                        .with(authentication(new UsernamePasswordAuthenticationToken(USER_ID, null, List.of())))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(VALID_GAME_SYSTEM_REQUEST))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.title").value("Access denied"));
+    }
+
+    @Test
+    void shouldReturnUnauthorized_whenNoTokenIsSentForGameSystemUpdate() throws Exception {
+        mockMvc.perform(patch("/api/projects/{projectId}/game-system", PROJECT_ID)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(VALID_GAME_SYSTEM_REQUEST))
+                .andExpect(status().isUnauthorized());
+
+        verifyNoInteractions(projectServiceMock);
+    }
+
+    //updateDescription
+    @Test
+    void shouldReturnUpdatedDescription_whenRequestIsValid() throws Exception {
+        when(projectServiceMock.updateDescription(USER_ID, PROJECT_ID, NEW_DESCRIPTION))
+                .thenReturn(new ProjectSummary(PROJECT_ID, PROJECT_NAME, GAME_SYSTEM, NEW_DESCRIPTION, MembershipRole.GAME_MASTER));
+
+        mockMvc.perform(patch("/api/projects/{projectId}/description", PROJECT_ID)
+                        .with(authentication(new UsernamePasswordAuthenticationToken(USER_ID, null, List.of())))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(VALID_DESCRIPTION_REQUEST))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(PROJECT_ID))
+                .andExpect(jsonPath("$.description").value(NEW_DESCRIPTION));
+    }
+
+    @Test
+    void shouldReturnNotFound_whenServiceThrowsProjectNotFoundOnDescriptionUpdate() throws Exception {
+        when(projectServiceMock.updateDescription(USER_ID, PROJECT_ID, NEW_DESCRIPTION))
+                .thenThrow(new ProjectNotFoundException("No membership found"));
+
+        mockMvc.perform(patch("/api/projects/{projectId}/description", PROJECT_ID)
+                        .with(authentication(new UsernamePasswordAuthenticationToken(USER_ID, null, List.of())))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(VALID_DESCRIPTION_REQUEST))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.title").value("Project not found"));
+    }
+
+    @Test
+    void shouldReturnForbidden_whenServiceThrowsAccessDeniedOnDescriptionUpdate() throws Exception {
+        when(projectServiceMock.updateDescription(USER_ID, PROJECT_ID, NEW_DESCRIPTION))
+                .thenThrow(new ProjectAccessDeniedException("userId: 1, projectId: 2"));
+
+        mockMvc.perform(patch("/api/projects/{projectId}/description", PROJECT_ID)
+                        .with(authentication(new UsernamePasswordAuthenticationToken(USER_ID, null, List.of())))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(VALID_DESCRIPTION_REQUEST))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.title").value("Access denied"));
+    }
+
+    @Test
+    void shouldReturnUnauthorized_whenNoTokenIsSentForDescriptionUpdate() throws Exception {
+        mockMvc.perform(patch("/api/projects/{projectId}/description", PROJECT_ID)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(VALID_DESCRIPTION_REQUEST))
                 .andExpect(status().isUnauthorized());
 
         verifyNoInteractions(projectServiceMock);
