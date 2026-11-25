@@ -89,6 +89,20 @@ public class ProjectService {
     }
 
     @Transactional
+    public ProjectSummary updateDescription(Long userId, Long projectId, String description){
+        Membership membership = findMembershipOrThrow(userId, projectId);
+        requireGameMaster(membership);
+
+        Project project = findProjectOrThrow(membership.getProjectId());
+
+        String normalizedDescription = StringUtil.blankToNull(description);
+        project.setDescription(normalizedDescription);
+        Project savedProject = projectRepository.save(project);
+
+        return ProjectSummary.of(savedProject, membership.getMembershipRole());
+    }
+
+    @Transactional
     public void deleteProject(Long userId, Long projectId){
         Membership membership = findMembershipOrThrow(userId, projectId);
         requireGameMaster(membership);

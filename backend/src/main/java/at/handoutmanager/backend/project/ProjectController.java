@@ -62,6 +62,15 @@ public class ProjectController {
         return ResponseEntity.ok(ProjectResponseDTO.from(project));
     }
 
+    @PatchMapping("/{projectId}/description")
+    public ResponseEntity<ProjectResponseDTO> updateDescription(@AuthenticationPrincipal Long userId,
+                                                               @PathVariable Long projectId,
+                                                               @Valid @RequestBody ProjectDescriptionUpdateRequestDTO request){
+        ProjectSummary project = projectService.updateDescription(userId, projectId, request.description());
+
+        return ResponseEntity.ok(ProjectResponseDTO.from(project));
+    }
+
     @DeleteMapping("/{projectId}")
     public ResponseEntity<Void> deleteProject(@AuthenticationPrincipal Long userId,
                                               @PathVariable Long projectId){
