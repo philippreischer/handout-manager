@@ -53,6 +53,15 @@ public class ProjectController {
         return ResponseEntity.ok(ProjectResponseDTO.from(project));
     }
 
+    @PatchMapping("/{projectId}/game-system")
+    public ResponseEntity<ProjectResponseDTO> updateGameSystem(@AuthenticationPrincipal Long userId,
+                                                               @PathVariable Long projectId,
+                                                               @Valid @RequestBody ProjectGameSystemUpdateRequestDTO request){
+        ProjectSummary project = projectService.updateGameSystem(userId, projectId, request.gameSystem());
+
+        return ResponseEntity.ok(ProjectResponseDTO.from(project));
+    }
+
     @DeleteMapping("/{projectId}")
     public ResponseEntity<Void> deleteProject(@AuthenticationPrincipal Long userId,
                                               @PathVariable Long projectId){
