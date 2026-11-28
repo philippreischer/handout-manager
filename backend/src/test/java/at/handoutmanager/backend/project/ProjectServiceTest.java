@@ -30,6 +30,12 @@ class ProjectServiceTest {
     private static final String PROJECT_NAME = "Curse of Strahd";
     private static final String NEW_PROJECT_NAME = "House of Lament";
     private static final String SECOND_PROJECT_NAME = "Tomb of Annihilation";
+    private static final String GAME_SYSTEM = "Dungeons & Dragons 5e";
+    private static final String NEW_GAME_SYSTEM = "Call of Cthulhu 7e";
+    private static final String BLANK_GAME_SYSTEM = "   ";
+    private static final String DESCRIPTION = "A barony lost in fog.";
+    private static final String BLANK_DESCRIPTION = "   ";
+    private static final String NEW_DESCRIPTION = "Arkham, 1923. A professor has gone missing.";
     private static final String NICK_NAME = "Strahd von Zarovich";
 
     @Mock
@@ -48,7 +54,7 @@ class ProjectServiceTest {
 
     @BeforeEach
     void setUp() {
-        savedProject = new Project(PROJECT_NAME);
+        savedProject = new Project(PROJECT_NAME, GAME_SYSTEM, DESCRIPTION);
         ReflectionTestUtils.setField(savedProject, "id", PROJECT_ID);
     }
 
@@ -57,17 +63,39 @@ class ProjectServiceTest {
     void shouldSaveProjectWithGivenName_whenProjectIsCreated() {
         when(projectRepositoryMock.save(any(Project.class))).thenReturn(savedProject);
 
-        sut.createProject(USER_ID, PROJECT_NAME, NICK_NAME);
+        sut.createProject(USER_ID, PROJECT_NAME, GAME_SYSTEM, DESCRIPTION, NICK_NAME);
 
         verify(projectRepositoryMock).save(projectCaptor.capture());
         assertThat(projectCaptor.getValue().getName()).isEqualTo(PROJECT_NAME);
     }
 
     @Test
+    void shouldSaveGameSystemAndDescription_whenProjectIsCreated() {
+        when(projectRepositoryMock.save(any(Project.class))).thenReturn(savedProject);
+
+        sut.createProject(USER_ID, PROJECT_NAME, GAME_SYSTEM, DESCRIPTION, NICK_NAME);
+
+        verify(projectRepositoryMock).save(projectCaptor.capture());
+        assertThat(projectCaptor.getValue().getGameSystem()).isEqualTo(GAME_SYSTEM);
+        assertThat(projectCaptor.getValue().getDescription()).isEqualTo(DESCRIPTION);
+    }
+
+    @Test
+    void shouldStoreNullGameSystemAndDescription_whenTheyAreBlank() {
+        when(projectRepositoryMock.save(any(Project.class))).thenReturn(savedProject);
+
+        sut.createProject(USER_ID, PROJECT_NAME, BLANK_GAME_SYSTEM, BLANK_DESCRIPTION, NICK_NAME);
+
+        verify(projectRepositoryMock).save(projectCaptor.capture());
+        assertThat(projectCaptor.getValue().getGameSystem()).isNull();
+        assertThat(projectCaptor.getValue().getDescription()).isNull();
+    }
+
+    @Test
     void shouldCreateGameMasterMembership_whenProjectIsCreated() {
         when(projectRepositoryMock.save(any(Project.class))).thenReturn(savedProject);
 
-        sut.createProject(USER_ID, PROJECT_NAME, NICK_NAME);
+        sut.createProject(USER_ID, PROJECT_NAME, GAME_SYSTEM, DESCRIPTION, NICK_NAME);
 
         verify(membershipServiceMock).createMembership(USER_ID, PROJECT_ID, NICK_NAME, MembershipRole.GAME_MASTER);
     }
@@ -76,15 +104,15 @@ class ProjectServiceTest {
     void shouldReturnSummary_whenProjectIsCreated() {
         when(projectRepositoryMock.save(any(Project.class))).thenReturn(savedProject);
 
-        ProjectSummary result = sut.createProject(USER_ID, PROJECT_NAME, NICK_NAME);
+        ProjectSummary result = sut.createProject(USER_ID, PROJECT_NAME, GAME_SYSTEM, DESCRIPTION, NICK_NAME);
 
-        assertThat(result).isEqualTo(new ProjectSummary(PROJECT_ID, PROJECT_NAME, MembershipRole.GAME_MASTER));
+        assertThat(result).isEqualTo(new ProjectSummary(PROJECT_ID, PROJECT_NAME, GAME_SYSTEM, DESCRIPTION, MembershipRole.GAME_MASTER));
     }
 
     //getProjectsForUser
     @Test
     void shouldReturnSummariesWithNameFromProjectAndRoleFromMembership_whenUserHasProjects() {
-        Project secondProject = projectWithId(SECOND_PROJECT_ID, SECOND_PROJECT_NAME);
+        Project secondProject = projectWithId(SECOND_PROJECT_ID, SECOND_PROJECT_NAME, GAME_SYSTEM, DESCRIPTION);
         when(membershipServiceMock.getMembershipsByUserId(USER_ID)).thenReturn(List.of(
                 new Membership(USER_ID, PROJECT_ID, NICK_NAME, MembershipRole.GAME_MASTER),
                 new Membership(USER_ID, SECOND_PROJECT_ID, NICK_NAME, MembershipRole.PLAYER)));
@@ -94,8 +122,8 @@ class ProjectServiceTest {
         List<ProjectSummary> result = sut.getProjectsForUser(USER_ID);
 
         assertThat(result).containsExactly(
-                new ProjectSummary(PROJECT_ID, PROJECT_NAME, MembershipRole.GAME_MASTER),
-                new ProjectSummary(SECOND_PROJECT_ID, SECOND_PROJECT_NAME, MembershipRole.PLAYER));
+                new ProjectSummary(PROJECT_ID, PROJECT_NAME, GAME_SYSTEM, DESCRIPTION, MembershipRole.GAME_MASTER),
+                new ProjectSummary(SECOND_PROJECT_ID, SECOND_PROJECT_NAME, GAME_SYSTEM, DESCRIPTION, MembershipRole.PLAYER));
     }
 
     @Test
@@ -107,7 +135,7 @@ class ProjectServiceTest {
 
     @Test
     void shouldLoadAllProjectsInOneQuery_whenUserHasSeveralProjects() {
-        Project secondProject = projectWithId(SECOND_PROJECT_ID, SECOND_PROJECT_NAME);
+        Project secondProject = projectWithId(SECOND_PROJECT_ID, SECOND_PROJECT_NAME, GAME_SYSTEM, DESCRIPTION);
         when(membershipServiceMock.getMembershipsByUserId(USER_ID)).thenReturn(List.of(
                 new Membership(USER_ID, PROJECT_ID, NICK_NAME, MembershipRole.GAME_MASTER),
                 new Membership(USER_ID, SECOND_PROJECT_ID, NICK_NAME, MembershipRole.GAME_MASTER)));
@@ -129,7 +157,7 @@ class ProjectServiceTest {
 
         ProjectSummary result = sut.getProject(USER_ID, PROJECT_ID);
 
-        assertThat(result).isEqualTo(new ProjectSummary(PROJECT_ID, PROJECT_NAME, MembershipRole.PLAYER));
+        assertThat(result).isEqualTo(new ProjectSummary(PROJECT_ID, PROJECT_NAME, GAME_SYSTEM, DESCRIPTION, MembershipRole.PLAYER));
     }
 
     @Test
@@ -162,7 +190,7 @@ class ProjectServiceTest {
 
         ProjectSummary result = sut.renameProject(USER_ID, PROJECT_ID, NEW_PROJECT_NAME);
 
-        assertThat(result).isEqualTo(new ProjectSummary(PROJECT_ID, NEW_PROJECT_NAME, MembershipRole.GAME_MASTER));
+        assertThat(result).isEqualTo(new ProjectSummary(PROJECT_ID, NEW_PROJECT_NAME, GAME_SYSTEM, DESCRIPTION, MembershipRole.GAME_MASTER));
         verify(projectRepositoryMock).save(projectCaptor.capture());
         assertThat(projectCaptor.getValue().getName()).isEqualTo(NEW_PROJECT_NAME);
     }
@@ -183,6 +211,104 @@ class ProjectServiceTest {
             .thenReturn(Optional.of(new Membership(USER_ID, PROJECT_ID, NICK_NAME, MembershipRole.PLAYER)));
 
         assertThatThrownBy(() -> sut.renameProject(USER_ID, PROJECT_ID, NEW_PROJECT_NAME))
+                .isInstanceOf(ProjectAccessDeniedException.class);
+
+        verify(projectRepositoryMock, never()).save(any());
+    }
+
+    //updateGameSystem
+    @Test
+    void shouldUpdateGameSystem_whenUserIsOwner() {
+        when(membershipServiceMock.findMembership(USER_ID, PROJECT_ID))
+                .thenReturn(Optional.of(new Membership(USER_ID, PROJECT_ID, NICK_NAME, MembershipRole.GAME_MASTER)));
+        when(projectRepositoryMock.findById(PROJECT_ID)).thenReturn(Optional.of(savedProject));
+        when(projectRepositoryMock.save(any(Project.class))).thenReturn(savedProject);
+
+        ProjectSummary result = sut.updateGameSystem(USER_ID, PROJECT_ID, NEW_GAME_SYSTEM);
+
+        verify(projectRepositoryMock).save(projectCaptor.capture());
+        assertThat(projectCaptor.getValue().getGameSystem()).isEqualTo(NEW_GAME_SYSTEM);
+        assertThat(result).isEqualTo(new ProjectSummary(PROJECT_ID, PROJECT_NAME, NEW_GAME_SYSTEM, DESCRIPTION, MembershipRole.GAME_MASTER));
+    }
+
+    @Test
+    void shouldStoreNullGameSystem_whenUpdateIsBlank() {
+        when(membershipServiceMock.findMembership(USER_ID, PROJECT_ID))
+                .thenReturn(Optional.of(new Membership(USER_ID, PROJECT_ID, NICK_NAME, MembershipRole.GAME_MASTER)));
+        when(projectRepositoryMock.findById(PROJECT_ID)).thenReturn(Optional.of(savedProject));
+        when(projectRepositoryMock.save(any(Project.class))).thenReturn(savedProject);
+
+        sut.updateGameSystem(USER_ID, PROJECT_ID, BLANK_GAME_SYSTEM);
+
+        verify(projectRepositoryMock).save(projectCaptor.capture());
+        assertThat(projectCaptor.getValue().getGameSystem()).isNull();
+    }
+
+    @Test
+    void shouldThrowProjectNotFound_whenUserIsNotMemberOnGameSystemUpdate() {
+        when(membershipServiceMock.findMembership(USER_ID, PROJECT_ID)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> sut.updateGameSystem(USER_ID, PROJECT_ID, NEW_GAME_SYSTEM))
+                .isInstanceOf(ProjectNotFoundException.class);
+
+        verify(projectRepositoryMock, never()).save(any());
+    }
+
+    @Test
+    void shouldThrowAccessDenied_whenUserIsNotGameMasterOnGameSystemUpdate() {
+        when(membershipServiceMock.findMembership(USER_ID, PROJECT_ID))
+                .thenReturn(Optional.of(new Membership(USER_ID, PROJECT_ID, NICK_NAME, MembershipRole.PLAYER)));
+
+        assertThatThrownBy(() -> sut.updateGameSystem(USER_ID, PROJECT_ID, NEW_GAME_SYSTEM))
+                .isInstanceOf(ProjectAccessDeniedException.class);
+
+        verify(projectRepositoryMock, never()).save(any());
+    }
+
+    //updateDescription
+    @Test
+    void shouldUpdateDescription_whenUserIsOwner() {
+        when(membershipServiceMock.findMembership(USER_ID, PROJECT_ID))
+                .thenReturn(Optional.of(new Membership(USER_ID, PROJECT_ID, NICK_NAME, MembershipRole.GAME_MASTER)));
+        when(projectRepositoryMock.findById(PROJECT_ID)).thenReturn(Optional.of(savedProject));
+        when(projectRepositoryMock.save(any(Project.class))).thenReturn(savedProject);
+
+        ProjectSummary result = sut.updateDescription(USER_ID, PROJECT_ID, NEW_DESCRIPTION);
+
+        verify(projectRepositoryMock).save(projectCaptor.capture());
+        assertThat(projectCaptor.getValue().getDescription()).isEqualTo(NEW_DESCRIPTION);
+        assertThat(result).isEqualTo(new ProjectSummary(PROJECT_ID, PROJECT_NAME, GAME_SYSTEM, NEW_DESCRIPTION, MembershipRole.GAME_MASTER));
+    }
+
+    @Test
+    void shouldStoreNullDescription_whenUpdateIsBlank() {
+        when(membershipServiceMock.findMembership(USER_ID, PROJECT_ID))
+                .thenReturn(Optional.of(new Membership(USER_ID, PROJECT_ID, NICK_NAME, MembershipRole.GAME_MASTER)));
+        when(projectRepositoryMock.findById(PROJECT_ID)).thenReturn(Optional.of(savedProject));
+        when(projectRepositoryMock.save(any(Project.class))).thenReturn(savedProject);
+
+        sut.updateDescription(USER_ID, PROJECT_ID, BLANK_DESCRIPTION);
+
+        verify(projectRepositoryMock).save(projectCaptor.capture());
+        assertThat(projectCaptor.getValue().getDescription()).isNull();
+    }
+
+    @Test
+    void shouldThrowProjectNotFound_whenUserIsNotMemberOnDescriptionUpdate() {
+        when(membershipServiceMock.findMembership(USER_ID, PROJECT_ID)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> sut.updateDescription(USER_ID, PROJECT_ID, NEW_DESCRIPTION))
+                .isInstanceOf(ProjectNotFoundException.class);
+
+        verify(projectRepositoryMock, never()).save(any());
+    }
+
+    @Test
+    void shouldThrowAccessDenied_whenUserIsNotGameMasterOnDescriptionUpdate() {
+        when(membershipServiceMock.findMembership(USER_ID, PROJECT_ID))
+                .thenReturn(Optional.of(new Membership(USER_ID, PROJECT_ID, NICK_NAME, MembershipRole.PLAYER)));
+
+        assertThatThrownBy(() -> sut.updateDescription(USER_ID, PROJECT_ID, NEW_DESCRIPTION))
                 .isInstanceOf(ProjectAccessDeniedException.class);
 
         verify(projectRepositoryMock, never()).save(any());
@@ -233,8 +359,8 @@ class ProjectServiceTest {
         verify(projectRepositoryMock).deleteAllByIdInBatch(List.of(PROJECT_ID));
     }
 
-    private Project projectWithId(Long id, String name) {
-        Project project = new Project(name);
+    private Project projectWithId(Long id, String name, String gameSystem, String description) {
+        Project project = new Project(name, gameSystem, description);
         ReflectionTestUtils.setField(project, "id", id);
         return project;
     }

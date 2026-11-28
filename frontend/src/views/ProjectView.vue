@@ -51,6 +51,9 @@ onMounted(async () => {
       <header class="flex items-start justify-between gap-4 pt-4">
         <div>
           <h1 class="text-2xl font-bold text-slate-100">{{ projectStore.currentProject.name }}</h1>
+          <p v-if="projectStore.currentProject.gameSystem" class="mt-1 text-slate-300">
+            {{ projectStore.currentProject.gameSystem }}
+          </p>
           <p class="mt-1 text-slate-400">
             {{ formatMembershipRole(projectStore.currentProject.membershipRole) }}
           </p>
@@ -78,6 +81,12 @@ onMounted(async () => {
           </svg>
         </button>
       </header>
+      <p
+        v-if="projectStore.currentProject.description"
+        class="whitespace-pre-line text-slate-300"
+      >
+        {{ projectStore.currentProject.description }}
+      </p>
 
       <ProjectSettings
         v-if="isGameMaster && isSettingsOpen"

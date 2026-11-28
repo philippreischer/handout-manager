@@ -5,7 +5,8 @@ import type { ProjectResponse } from '@/types/project'
 
 const { storeMock, routerMock } = vi.hoisted(() => ({
   storeMock: {
-    createProject: vi.fn<(name: string, nickName: string) => Promise<ProjectResponse>>(),
+    createProject:
+      vi.fn<(name: string, gameSystem: string, description: string, nickName: string) => Promise<ProjectResponse>>(),
   },
   routerMock: { push: vi.fn<(to: unknown) => Promise<void>>() },
 }))
@@ -14,11 +15,21 @@ vi.mock('@/stores/projectStore', () => ({ useProjectStore: () => storeMock }))
 vi.mock('vue-router', () => ({ useRouter: () => routerMock }))
 
 const PROJECT_NAME = 'Curse of Strahd'
+const GAME_SYSTEM = 'Dungeons & Dragons 5e'
+const DESCRIPTION = 'A barony lost in fog.'
 const NICK_NAME = 'Strahd von Zarovich'
-const CREATED_PROJECT: ProjectResponse = { id: 99, name: PROJECT_NAME, membershipRole: 'GAME_MASTER' }
+const CREATED_PROJECT: ProjectResponse = {
+  id: 99,
+  name: PROJECT_NAME,
+  gameSystem: GAME_SYSTEM,
+  description: DESCRIPTION,
+  membershipRole: 'GAME_MASTER',
+}
 
 async function fillAndSubmit(wrapper: ReturnType<typeof mount>) {
   await wrapper.get('#create-project-name').setValue(PROJECT_NAME)
+  await wrapper.get('#create-project-game-system').setValue(GAME_SYSTEM)
+  await wrapper.get('#create-project-description').setValue(DESCRIPTION)
   await wrapper.get('#create-project-nickname').setValue(NICK_NAME)
   await wrapper.get('form').trigger('submit')
   await flushPromises()
@@ -35,7 +46,7 @@ describe('CreateProjectForm', () => {
 
     await fillAndSubmit(wrapper)
 
-    expect(storeMock.createProject).toHaveBeenCalledWith(PROJECT_NAME, NICK_NAME)
+      expect(storeMock.createProject).toHaveBeenCalledWith(PROJECT_NAME, GAME_SYSTEM, DESCRIPTION, NICK_NAME)
   })
 
   it('navigates to the project returned by the store', async () => {

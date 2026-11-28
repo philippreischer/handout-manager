@@ -14,11 +14,25 @@ const clientMock = vi.hoisted(() => ({
 vi.mock('@/api/httpClient', () => ({ default: clientMock }))
 
 const PROJECT_NAME = 'Curse of Strahd'
+const GAME_SYSTEM = 'Dungeons & Dragons 5e'
+const DESCRIPTION = 'A barony lost in fog.'
 const NICK_NAME = 'Strahd von Zarovich'
 const NEW_PROJECT_NAME = 'House of Lament'
 
-const FIRST_PROJECT: ProjectResponse = { id: 7, name: 'Tomb of Annihilation', membershipRole: 'PLAYER' }
-const SECOND_PROJECT: ProjectResponse = { id: 12, name: PROJECT_NAME, membershipRole: 'GAME_MASTER' }
+const FIRST_PROJECT: ProjectResponse = {
+  id: 7,
+  name: 'Tomb of Annihilation',
+  gameSystem: null,
+  description: null,
+  membershipRole: 'PLAYER',
+}
+const SECOND_PROJECT: ProjectResponse = {
+  id: 12,
+  name: PROJECT_NAME,
+  gameSystem: null,
+  description: null,
+  membershipRole: 'GAME_MASTER',
+}
 
 // Only the part of an Axios response the store reads.
 function axiosResponse<T>(data: T) {
@@ -31,15 +45,23 @@ describe('projectStore', () => {
     vi.clearAllMocks()
   })
 
-  it('sends name and nickname in this order and adds the created project', async () => {
-    const created: ProjectResponse = { id: 20, name: PROJECT_NAME, membershipRole: 'GAME_MASTER' }
+  it('sends name, game system, description and nickname in this order and adds the created project', async () => {
+    const created: ProjectResponse = {
+      id: 20,
+      name: PROJECT_NAME,
+      gameSystem: GAME_SYSTEM,
+      description: DESCRIPTION,
+      membershipRole: 'GAME_MASTER',
+    }
     clientMock.post.mockResolvedValue(axiosResponse(created))
     const store = useProjectStore()
 
-    const result = await store.createProject(PROJECT_NAME, NICK_NAME)
+    const result = await store.createProject(PROJECT_NAME, GAME_SYSTEM, DESCRIPTION, NICK_NAME)
 
     expect(clientMock.post).toHaveBeenCalledWith('/api/projects', {
       name: PROJECT_NAME,
+      gameSystem: GAME_SYSTEM,
+      description: DESCRIPTION,
       nickName: NICK_NAME,
     })
     expect(result).toEqual(created)
@@ -107,5 +129,31 @@ describe('projectStore', () => {
 
     expect(store.projects).toEqual([])
     expect(store.currentProject).toBeNull()
+  })
+
+  it('sends the game system to its own endpoint and replaces the project', async () => {
+    const updated: ProjectResponse = { ...SECOND_PROJECT, gameSystem: GAME_SYSTEM }
+    clientMock.patch.mockResolvedValue(axiosResponse(updated))
+    const store = useProjectStore()
+    store.projects = [FIRST_PROJECT, SECOND_PROJECT]
+
+    await store.updateGameSystem(SECOND_PROJECT.id, GAME_SYSTEM)
+
+    expect(clientMock.patch).toHaveBeenCalledWith('/api/projects/12/game-system', { gameSystem: GAME_SYSTEM })
+    expect(store.projects).toEqual([FIRST_PROJECT, updated])
+    expect(store.currentProject).toEqual(updated)
+  })
+
+  it('sends the description to its own endpoint and replaces the project', async () => {
+    const updated: ProjectResponse = { ...SECOND_PROJECT, description: DESCRIPTION }
+    clientMock.patch.mockResolvedValue(axiosResponse(updated))
+    const store = useProjectStore()
+    store.projects = [FIRST_PROJECT, SECOND_PROJECT]
+
+    await store.updateDescription(SECOND_PROJECT.id, DESCRIPTION)
+
+    expect(clientMock.patch).toHaveBeenCalledWith('/api/projects/12/description', { description: DESCRIPTION })
+    expect(store.projects).toEqual([FIRST_PROJECT, updated])
+    expect(store.currentProject).toEqual(updated)
   })
 })

@@ -1,7 +1,6 @@
 package at.handoutmanager.backend.project;
 
 import jakarta.validation.Valid;
-import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -19,22 +18,19 @@ public class ProjectController {
         this.projectService = projectService;
     }
 
-
-    @PostMapping()
+    @PostMapping
     public ResponseEntity<ProjectResponseDTO> createProject(@AuthenticationPrincipal Long userId,
                                                             @Valid @RequestBody ProjectCreateRequestDTO request){
-
-        ProjectSummary project = projectService.createProject(userId, request.name(), request.nickName());
+        ProjectSummary project = projectService.createProject(userId, request.name(), request.gameSystem(), request.description(), request.nickName());
 
         return ResponseEntity.status(HttpStatus.CREATED)
-                .body(new ProjectResponseDTO(project.id(), project.name(), project.membershipRole()));
+                .body(ProjectResponseDTO.from(project));
     }
 
     @GetMapping
     public ResponseEntity<List<ProjectResponseDTO>> getProjects(@AuthenticationPrincipal Long userId) {
-
         List<ProjectResponseDTO> projects = projectService.getProjectsForUser(userId).stream()
-                .map(project -> new ProjectResponseDTO(project.id(), project.name(), project.membershipRole()))
+                .map(ProjectResponseDTO::from)
                 .toList();
 
         return ResponseEntity.ok(projects);
@@ -45,7 +41,7 @@ public class ProjectController {
                                                          @PathVariable Long projectId){
         ProjectSummary project = projectService.getProject(userId, projectId);
 
-        return ResponseEntity.ok(new ProjectResponseDTO(project.id(), project.name(), project.membershipRole()));
+        return ResponseEntity.ok(ProjectResponseDTO.from(project));
     }
 
     @PatchMapping("/{projectId}/name")
@@ -54,7 +50,25 @@ public class ProjectController {
                                                             @Valid @RequestBody ProjectRenameRequestDTO request){
         ProjectSummary project = projectService.renameProject(userId, projectId, request.name());
 
-        return ResponseEntity.ok(new ProjectResponseDTO(project.id(), project.name(), project.membershipRole()));
+        return ResponseEntity.ok(ProjectResponseDTO.from(project));
+    }
+
+    @PatchMapping("/{projectId}/game-system")
+    public ResponseEntity<ProjectResponseDTO> updateGameSystem(@AuthenticationPrincipal Long userId,
+                                                               @PathVariable Long projectId,
+                                                               @Valid @RequestBody ProjectGameSystemUpdateRequestDTO request){
+        ProjectSummary project = projectService.updateGameSystem(userId, projectId, request.gameSystem());
+
+        return ResponseEntity.ok(ProjectResponseDTO.from(project));
+    }
+
+    @PatchMapping("/{projectId}/description")
+    public ResponseEntity<ProjectResponseDTO> updateDescription(@AuthenticationPrincipal Long userId,
+                                                               @PathVariable Long projectId,
+                                                               @Valid @RequestBody ProjectDescriptionUpdateRequestDTO request){
+        ProjectSummary project = projectService.updateDescription(userId, projectId, request.description());
+
+        return ResponseEntity.ok(ProjectResponseDTO.from(project));
     }
 
     @DeleteMapping("/{projectId}")

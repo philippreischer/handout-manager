@@ -5,12 +5,17 @@ import { useProjectStore } from '@/stores/projectStore'
 import { extractErrorMessage } from '@/api/errorMessage'
 import ProjectNameField from '@/components/ui/ProjectNameField.vue'
 import ProjectNickNameField from '@/components/ui/ProjectNickNameField.vue'
+import ProjectGameSystemField from '@/components/ui/ProjectGameSystemField.vue'
+import ProjectDescriptionField from '@/components/ui/ProjectDescriptionField.vue'
+
 
 const router = useRouter()
 const projectStore = useProjectStore()
 
 const emit = defineEmits<{ cancel: [] }>()
 const name = ref('')
+const gameSystem = ref('')
+const description = ref('')
 const nickName = ref('')
 const errorMessage = ref<string | null>(null)
 const isSubmitting = ref(false)
@@ -20,7 +25,7 @@ async function handleSubmit() {
   isSubmitting.value = true
 
   try {
-    const project = await projectStore.createProject(name.value, nickName.value)
+    const project = await projectStore.createProject(name.value, gameSystem.value, description.value, nickName.value)
     await router.push({ name: 'project', params: { projectId: project.id } })
   } catch (error) {
     errorMessage.value = extractErrorMessage(error, 'Create project failed.')
@@ -36,7 +41,12 @@ async function handleSubmit() {
 
     <ProjectNameField id="create-project-name" v-model="name" />
 
+    <ProjectGameSystemField id="create-project-game-system" v-model="gameSystem" />
+
+    <ProjectDescriptionField id="create-project-description" v-model="description" />
+
     <ProjectNickNameField id="create-project-nickname" v-model="nickName" />
+
 
     <p v-if="errorMessage" role="alert" class="text-sm text-red-400">
       {{ errorMessage }}

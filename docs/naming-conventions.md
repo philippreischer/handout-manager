@@ -125,6 +125,20 @@ Merke: **Handout** und **Note** sind *Werte* von `ResourceType`, keine eigenen E
   ID → Objekt, nicht über die Position in der Liste.
 - **Lambda-Parameter heißen in der Einzahl** und nie wie die Liste, über die sie laufen:
   `memberships.stream().filter(membership -> …)`. Java verbietet den gleichen Namen ohnehin.
+- **Fabrikmethoden: `from` wandelt *ein* Objekt um, `of` baut aus *mehreren* Teilen zusammen.**
+  `ProjectResponseDTO.from(ProjectSummary)`, `ProjectSummary.of(Project, MembershipRole)`. Am Namen
+  sieht man, ob etwas zusammengesetzt wird. Eine Fabrik nimmt genau die Quellen, die ihre Felder
+  tragen: Kommt ein Feld aus einer anderen Entity (die Rolle aus der Membership), gehört diese Quelle
+  in die Signatur — sonst wird der Wert fest eingebaut.
+- **Eine Regel, die mehrere Packages brauchen, wird ein `…Util` in `common`**, nicht kopiert und
+  nicht in einem der Packages versteckt: `StringUtil.blankToNull` für „leer wird `null`“, herausgezogen,
+  als nach dem Nickname auch Spielsystem und Beschreibung sie brauchten.
+- **„update“ für Änderungen, „rename“ nur für Namen.** `renameProject` ändert den Namen,
+  `updateGameSystem` und `updateDescription` ändern Inhalte. DTOs entsprechend:
+  `ProjectRenameRequestDTO`, `ProjectGameSystemUpdateRequestDTO` — immer mit `Project` vorn.
+- **Langer Text: Spalte `TEXT`, Grenze im DTO, an der Entity `columnDefinition = "TEXT"`.** Hibernate
+  erwartet für einen `String` sonst `VARCHAR(255)`, und `ddl-auto=validate` kann beim Start
+  scheitern. Die Grenze im DTO lässt sich ändern, ohne zu migrieren.
 
 ### Package-Struktur (feature-basiert)
 
@@ -211,6 +225,10 @@ hält.
   (`EmailField`, `PasswordField`, `UserNameField`), die nur die Attribute *ihres* Feldes setzen —
   Typ, `autocomplete`, Längen nach dem Backend-DTO. Der Rumpf wird nie direkt benutzt. Mehrere
   unabhängige Feldkomponenten ohne Rumpf verschieben die Verdopplung nur.
+  **Für mehrzeiligen Text gibt es einen zweiten Rumpf, `FormTextArea`** — bewusst getrennt statt
+  eines `multiline`-Props an `FormField`. Label, Klassen und `aria`-Verdrahtung stehen damit
+  doppelt; ein Kommentar in beiden Dateien sagt, dass sie zusammen geändert werden. Kein
+  `<component :is="…">` als Abkürzung: `v-model` funktioniert daran nicht wie an einem nativen Feld.
 - **Attribute, die nicht auseinanderlaufen dürfen, bekommen *ein* Prop.** `purpose="new"` setzt
   an `PasswordField` `minlength`, `autocomplete` und den Hinweistext gemeinsam; drei einzelne
   Props erlaubten, zwei zu setzen und das dritte zu vergessen. **Und der Standard zeigt dorthin,
@@ -305,6 +323,14 @@ hält.
 - **Ein vorbefülltes Formularfeld ist eine Kopie:** `ref(props.project.name)` liest einmal beim
   Erzeugen. Eine Verknüpfung würde die Eingabe beim Tippen überschreiben, sobald sich der Store
   ändert.
+- **Ein nullbarer Wert für ein Pflicht-Modell bekommt `?? ''`:** `ref(props.project.gameSystem ?? '')`.
+  Vue zeigt `null` im Feld genauso leer an wie `''` — der Unterschied existiert nur für die Typen,
+  und nur der `type-check` findet ein fehlendes `?? ''`. Ein Komponententest kann es nicht.
+- **Mehrzeiliger Benutzertext mit `whitespace-pre-line`.** HTML fasst Zeilenumbrüche sonst zu
+  Leerzeichen zusammen, und aus Absätzen wird ein Block.
+- **Optionale Werte in der Anzeige unter `v-if`**, damit ohne Wert keine leere Zeile Platz nimmt.
+- **Wiederholte Store-Logik in eine interne Hilfsfunktion, die *nicht* im `return` steht**
+  (`replaceProject`). So kann keine Komponente den Store an den Actions vorbei verändern.
 - **`autocomplete`-Werte haben feste Bedeutungen.** `name` heißt „vollständiger Name einer Person“,
   `nickname` „eigener Spitzname“. Für ein Feld, das keinem dieser Werte entspricht (Projektname,
   Rollenname), `autocomplete="off"` — sonst schlägt der Browser Unpassendes vor.
@@ -372,9 +398,10 @@ hält.
 - **`ON DELETE` eines bestehenden Fremdschlüssels ändern = entfernen und neu anlegen**, in einer
   `ALTER TABLE`-Anweisung, mit unverändertem Constraint-Namen:
   `ALTER TABLE membership DROP CONSTRAINT fk_membership_user_id, ADD CONSTRAINT fk_membership_user_id FOREIGN KEY (user_id) REFERENCES user_account (id) ON DELETE CASCADE;`
-- **Nullable heißt genau ein Zustand für „leer“.** Eine optionale Textspalte (`nick_name`) speichert
-  `null`, nie `""` oder reinen Leerraum — normalisiert an genau einer Stelle im Service. Ersatztexte
-  für die Anzeige gehören ins Frontend, nicht in die Datenbank.
+- **Nullable heißt genau ein Zustand für „leer“.** Eine optionale Textspalte (`nick_name`,
+  `game_system`, `description`) speichert `null`, nie `""` oder reinen Leerraum — normalisiert über
+  `StringUtil.blankToNull`, beim Anlegen **und** beim Ändern. Ersatztexte für die Anzeige gehören ins
+  Frontend, nicht in die Datenbank.
 
 > **Abweichung von A11yForge (festgelegt):** Dort wurden Enum-Werte als lowercase snake_case (`'pending'`) gespeichert. Hier speichern wir sie als **UPPER_SNAKE** (`'GAME_MASTER'`), damit `@Enumerated(EnumType.STRING)` ohne `AttributeConverter` direkt passt.
 
@@ -390,7 +417,7 @@ hält.
 | JSON-Property | camelCase | `"filePath": "…"` |
 | Ressourcen-Verb | HTTP-Methode | `POST /api/resources`, `GET /api/resources/{id}` |
 | Eigener Datensatz | `/me` statt der eigenen ID | `GET /api/users/me` |
-| Teiländerung eines Feldes | `PATCH <ressource>/<feld>` | `PATCH /api/users/me/username` |
+| Teiländerung eines Feldes | `PATCH <ressource>/<feld>`, Feld in kebab-case | `PATCH /api/users/me/username`, `PATCH /api/projects/{projectId}/game-system` |
 | Vorgang ohne Ressource | `<vorgang>/<schritt>` | `POST /api/auth/password-reset/request` |
 | Fehlerantwort | `ProblemDetail` | `{"status": 409, "title": …, "detail": …}` |
 
@@ -699,6 +726,13 @@ POST   /api/resources/{resourceId}/permissions
 - **Mock-Funktionen für Store-Actions mit Signatur typisieren**, etwa
   `vi.fn<(projectId: number) => Promise<void>>()`. Ohne Typparameter meldet es der Lint-Durchlauf,
   und `mockResolvedValue` prüft dann den Rückgabetyp mit.
+- **Der Store-Mock enthält nur die Action, die die Komponente aufrufen soll.** Ruft sie aus einem
+  Kopierfehler eine andere auf, existiert die im Mock nicht, und der Test wird rot.
+- **Testobjekte vom Typ einer Antwort brauchen alle Felder**, auch die nullbaren
+  (`gameSystem: null`). Vitest prüft keine Typen — fehlende Felder fallen erst `npm run type-check`
+  auf.
+- **Manches kann nur der `type-check` absichern.** Wo sich ein Fehler nur im Typ zeigt (ein
+  fehlendes `?? ''`), bleibt jeder Test grün. Deshalb gehört `type-check` in die CI.
 
 ---
 

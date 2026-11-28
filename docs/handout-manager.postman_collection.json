@@ -328,7 +328,7 @@
             "header": [],
             "body": {
               "mode": "raw",
-              "raw": "{\r\n  \"name\": \"Spiel1\",\r\n  \"nickName\": \"Spielleiter\"\r\n}",
+              "raw": "{\r\n  \"name\": \"Curse of Strahd\",\r\n  \"gameSystem\": \"Dungeons & Dragons 5e\",\r\n  \"description\": \"The barony of Barovia lies under an endless mist. A dark lord rules from his castle, and no traveller has left the valley in living memory.\",\r\n  \"nickName\": \"Strahd von Zarovich\"\r\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -403,7 +403,7 @@
             "header": [],
             "body": {
               "mode": "raw",
-              "raw": "{\r\n    \"name\": \"new name\"\r\n}",
+              "raw": "{\r\n    \"name\": \"Tomb of Annihilation\"\r\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -439,6 +439,64 @@
                 "api",
                 "projects",
                 "{{projectId}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Update gamesystem",
+          "request": {
+            "method": "PATCH",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\r\n    \"gameSystem\": \"Call of Cthulhu 7e\"\r\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/projects/{{projectId}}/game-system",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "projects",
+                "{{projectId}}",
+                "game-system"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Update description",
+          "request": {
+            "method": "PATCH",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\r\n  \"description\": \"Arkham, 1923. A professor has gone missing, and the last letter he wrote speaks of a book that should never have been opened.\"\r\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/projects/{{projectId}}/description",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "projects",
+                "{{projectId}}",
+                "description"
               ]
             }
           },

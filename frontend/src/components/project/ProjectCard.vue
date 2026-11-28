@@ -16,6 +16,7 @@ const roleLabel = computed(() => formatMembershipRole(props.project.membershipRo
     class="block rounded-lg border border-slate-700 bg-slate-800 p-4 hover:border-slate-500 hover:bg-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400"
   >
     <h2 class="text-lg font-semibold text-slate-100">{{ project.name }}</h2>
+    <p v-if="project.gameSystem" class="mt-1 text-sm text-slate-300">{{ project.gameSystem }}</p>
     <p class="mt-1 text-sm text-slate-400">{{ roleLabel }}</p>
   </RouterLink>
 </template>

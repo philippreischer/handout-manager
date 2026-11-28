@@ -18,6 +18,7 @@ const hintId = computed(() => `${props.id}-hint`)
 </script>
 
 <template>
+  <!-- Label, hint and classes mirror FormField: change both together. -->
   <div>
     <label :for="id" class="mb-1 block text-sm text-slate-400">{{ label }}</label>
 

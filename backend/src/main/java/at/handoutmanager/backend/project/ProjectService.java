@@ -1,5 +1,6 @@
 package at.handoutmanager.backend.project;
 
+import at.handoutmanager.backend.common.StringUtil;
 import at.handoutmanager.backend.membership.Membership;
 import at.handoutmanager.backend.membership.MembershipRole;
 import at.handoutmanager.backend.membership.MembershipService;
@@ -23,12 +24,14 @@ public class ProjectService {
     }
 
     @Transactional
-    public ProjectSummary createProject(Long userId, String name, String nickName){
-        Project savedProject = projectRepository.save(new Project(name));
+    public ProjectSummary createProject(Long userId, String name, String gameSystem, String description, String nickName){
+        String normalizedGameSystem = StringUtil.blankToNull(gameSystem);
+        String normalizedDescription = StringUtil.blankToNull(description);
+        Project savedProject = projectRepository.save(new Project(name, normalizedGameSystem, normalizedDescription));
 
         membershipService.createMembership(userId, savedProject.getId(), nickName, MembershipRole.GAME_MASTER);
 
-        return new ProjectSummary(savedProject.getId(), savedProject.getName(), MembershipRole.GAME_MASTER);
+        return ProjectSummary.of(savedProject, MembershipRole.GAME_MASTER);
     }
 
 
@@ -45,7 +48,7 @@ public class ProjectService {
         return memberships.stream()
                 .map(membership -> {
                     Project project = projectsById.get(membership.getProjectId());
-                    return new ProjectSummary(project.getId(), project.getName(), membership.getMembershipRole());
+                    return ProjectSummary.of(project, membership.getMembershipRole());
                 })
                 .toList();
     }
@@ -55,7 +58,7 @@ public class ProjectService {
 
         Project project = findProjectOrThrow(membership.getProjectId());
 
-        return new ProjectSummary(project.getId(), project.getName(), membership.getMembershipRole());
+        return ProjectSummary.of(project, membership.getMembershipRole());
     }
 
     @Transactional
@@ -68,7 +71,35 @@ public class ProjectService {
         project.setName(name);
         Project savedProject = projectRepository.save(project);
 
-        return new ProjectSummary(savedProject.getId(), savedProject.getName(), membership.getMembershipRole());
+        return ProjectSummary.of(savedProject, membership.getMembershipRole());
+    }
+
+    @Transactional
+    public ProjectSummary updateGameSystem(Long userId, Long projectId, String gameSystem){
+        Membership membership = findMembershipOrThrow(userId, projectId);
+        requireGameMaster(membership);
+
+        Project project = findProjectOrThrow(membership.getProjectId());
+
+        String normalizedGameSystem = StringUtil.blankToNull(gameSystem);
+        project.setGameSystem(normalizedGameSystem);
+        Project savedProject = projectRepository.save(project);
+
+        return ProjectSummary.of(savedProject, membership.getMembershipRole());
+    }
+
+    @Transactional
+    public ProjectSummary updateDescription(Long userId, Long projectId, String description){
+        Membership membership = findMembershipOrThrow(userId, projectId);
+        requireGameMaster(membership);
+
+        Project project = findProjectOrThrow(membership.getProjectId());
+
+        String normalizedDescription = StringUtil.blankToNull(description);
+        project.setDescription(normalizedDescription);
+        Project savedProject = projectRepository.save(project);
+
+        return ProjectSummary.of(savedProject, membership.getMembershipRole());
     }
 
     @Transactional
@@ -111,5 +142,4 @@ public class ProjectService {
                     .orElseThrow(()-> new ProjectNotFoundException(
                             "Project does not exist: " + projectId));
     }
-
 }

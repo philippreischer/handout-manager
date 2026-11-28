@@ -11,7 +11,14 @@ const { storeMock, routerMock } = vi.hoisted(() => ({
 vi.mock('@/stores/projectStore', () => ({ useProjectStore: () => storeMock }))
 vi.mock('vue-router', () => ({ useRouter: () => routerMock }))
 
-const PROJECT: ProjectResponse = { id: 12, name: 'Curse of Strahd', membershipRole: 'GAME_MASTER' }
+const PROJECT: ProjectResponse = {
+  id: 12,
+  name: 'Curse of Strahd',
+  gameSystem: null,
+  description: null,
+  membershipRole: 'GAME_MASTER',
+}
+
 const WRONG_CASE_NAME = 'curse of strahd'
 
 function mountSection() {
