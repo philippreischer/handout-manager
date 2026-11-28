@@ -130,4 +130,30 @@ describe('projectStore', () => {
     expect(store.projects).toEqual([])
     expect(store.currentProject).toBeNull()
   })
+
+  it('sends the game system to its own endpoint and replaces the project', async () => {
+    const updated: ProjectResponse = { ...SECOND_PROJECT, gameSystem: GAME_SYSTEM }
+    clientMock.patch.mockResolvedValue(axiosResponse(updated))
+    const store = useProjectStore()
+    store.projects = [FIRST_PROJECT, SECOND_PROJECT]
+
+    await store.updateGameSystem(SECOND_PROJECT.id, GAME_SYSTEM)
+
+    expect(clientMock.patch).toHaveBeenCalledWith('/api/projects/12/game-system', { gameSystem: GAME_SYSTEM })
+    expect(store.projects).toEqual([FIRST_PROJECT, updated])
+    expect(store.currentProject).toEqual(updated)
+  })
+
+  it('sends the description to its own endpoint and replaces the project', async () => {
+    const updated: ProjectResponse = { ...SECOND_PROJECT, description: DESCRIPTION }
+    clientMock.patch.mockResolvedValue(axiosResponse(updated))
+    const store = useProjectStore()
+    store.projects = [FIRST_PROJECT, SECOND_PROJECT]
+
+    await store.updateDescription(SECOND_PROJECT.id, DESCRIPTION)
+
+    expect(clientMock.patch).toHaveBeenCalledWith('/api/projects/12/description', { description: DESCRIPTION })
+    expect(store.projects).toEqual([FIRST_PROJECT, updated])
+    expect(store.currentProject).toEqual(updated)
+  })
 })
