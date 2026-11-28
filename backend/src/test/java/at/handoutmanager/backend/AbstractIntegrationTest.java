@@ -7,18 +7,22 @@ import org.springframework.boot.resttestclient.TestRestTemplate;
 import org.springframework.boot.resttestclient.autoconfigure.AutoConfigureTestRestTemplate;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
+import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
 import java.util.List;
+import java.util.Map;
 
 /**
  * Shared setup for every *IT. The annotations belong here and nowhere else:
  * Spring caches one context per distinct test configuration, and each context
  * brings its own database container. One extra property or bean override on a
- * subclass doubles the start-up cost of the whole suite.
+ * subclass doubles the start-up cost of the whole suite. Plain helper methods
+ * do not affect the cache and may be added freely.
  */
 @SpringBootTest(
         webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
@@ -30,6 +34,8 @@ import java.util.List;
 @AutoConfigureTestRestTemplate
 @Import(TestcontainersConfiguration.class)
 public abstract class AbstractIntegrationTest {
+
+    protected static final String TEST_PASSWORD = "secret1234";
 
     @Autowired
     protected TestRestTemplate restTemplate;
@@ -50,18 +56,47 @@ public abstract class AbstractIntegrationTest {
      * Emptied before each test, not after: a failed test leaves its rows behind for
      * inspection. A test-level {@code @Transactional} would not work here - with
      * RANDOM_PORT the server runs on its own connection, outside the test's
-     * transaction. CASCADE from user_account reaches every table with a foreign key
-     * to it, so this stays correct as the schema grows.
+     * transaction. CASCADE only reaches tables with a foreign key to a listed table,
+     * so every root table must be named: project has no foreign key to user_account.
      */
     @BeforeEach
     void clearDatabase() {
-        jdbcTemplate.execute("TRUNCATE user_account CASCADE");
+        jdbcTemplate.execute("TRUNCATE user_account, project CASCADE");
     }
 
     // Only the wire shape the tests need, deliberately not the production DTO: a
     // test that deserialises with the same class the server serialises with would
     // not notice a renamed JSON field.
     public record TokenResponse(String accessToken) {}
+
+    public record ProjectResponse(Long id, String name, String gameSystem, String description,
+                                  String membershipRole) {}
+
+    protected String registerAndLogin(String email, String userName) {
+        restTemplate.postForEntity("/api/auth/register",
+                Map.of("email", email, "password", TEST_PASSWORD, "userName", userName), Void.class);
+
+        return restTemplate.postForEntity("/api/auth/login",
+                        Map.of("email", email, "password", TEST_PASSWORD), TokenResponse.class)
+                .getBody().accessToken();
+    }
+
+    protected HttpHeaders bearer(String accessToken) {
+        HttpHeaders headers = new HttpHeaders();
+        headers.setBearerAuth(accessToken);
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        return headers;
+    }
+
+    protected Long createProject(String accessToken, String name) {
+        return restTemplate.postForEntity("/api/projects",
+                        new HttpEntity<>(Map.of("name", name), bearer(accessToken)), ProjectResponse.class)
+                .getBody().id();
+    }
+
+    protected Long userIdOf(String email) {
+        return jdbcTemplate.queryForObject("SELECT id FROM user_account WHERE email = ?", Long.class, email);
+    }
 
     protected HttpHeaders withRefreshCookie(ResponseEntity<?> response) {
         HttpHeaders headers = new HttpHeaders();
